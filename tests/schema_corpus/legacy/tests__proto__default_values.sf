@@ -1,0 +1,51 @@
+// Fixture for schema-defined field default values ([default = ...]).
+// Covers every supported default type (integers, bool, float/double, enum,
+// fixed/bounded string, bytes) plus a control message with no defaults at
+// all and a nested-message field whose own defaults must apply recursively.
+package default_values;
+
+enum Mode {
+  IDLE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+}
+
+message Inner {
+  uint8 inner_value = 1 [default = 7];
+}
+
+message DefaultsMessage {
+  option msgid = 1;
+
+  uint8   u8_val    = 1 [default = 200];
+  int8    i8_val    = 2 [default = -100];
+  uint16  u16_val   = 3 [default = 40000];
+  int16   i16_val   = 4 [default = -1000];
+  uint32  u32_val   = 5 [default = 3000000000];
+  int32   i32_val   = 6 [default = -2000000];
+  uint64  u64_val   = 7 [default = 10000000000];
+  int64   i64_val   = 8 [default = -10000000000];
+  bool    bool_val  = 9 [default = true];
+  float   float_val = 10 [default = 1.5];
+  double  double_val = 11 [default = 3.14159];
+  Mode    mode_val  = 12 [default = ACTIVE];
+  string  fixed_str = 13 [size = 16, default = "device"];
+  string  bound_str = 14 [max_size = 32, default = "hello world"];
+  bytes   fixed_bytes = 15 [size = 4, default = "ab"];
+
+  // No default: must remain the ordinary zero/empty value.
+  uint32  plain_val = 16;
+
+  // No default of its own, but Inner's own field has one -- must recurse.
+  Inner   nested    = 17;
+}
+
+// Control message: no defaults anywhere. Must generate/behave identically
+// to how it would have before this feature existed.
+message NoDefaultsMessage {
+  option msgid = 2;
+
+  uint32 value = 1;
+  bool   flag  = 2;
+  string name  = 3 [size = 8];
+}

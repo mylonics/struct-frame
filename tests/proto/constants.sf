@@ -1,0 +1,28 @@
+/// Schema constants of every type, including the edge values that need special
+/// spelling in some languages (minimum int32/int64, maximum uint64, non-finite floats).
+
+package constants @9;
+
+/// Length of a device name.
+const uint8 NAME_LEN = 16;
+const uint16 MAX_SAMPLES = 300;
+const int8 OFFSET = -40;
+const int32 INT32_LOW = -2147483648;
+const uint32 UINT32_HIGH = 0xFFFFFFFF;
+const int64 INT64_LOW = -9223372036854775808;
+const int64 INT64_HIGH = 9223372036854775807;
+const uint64 UINT64_HIGH = 0xFFFF_FFFF_FFFF_FFFF;
+const float NOMINAL_V = 3.3;
+const double PI = 3.141592653589793;
+const float POS_INF = inf;
+const double NEG_INF = -inf;
+const double NOT_A_NUMBER = nan;
+const bool ENABLED = true;
+const string VERSION = "1.4 \"beta\"\t\\ é";
+
+message Device @1 {
+  fixed_string<NAME_LEN> name = "dev";
+  vector<uint16, MAX_SAMPLES> samples;
+  float voltage = NOMINAL_V;
+  int8 offset = OFFSET;
+}

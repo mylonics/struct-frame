@@ -132,6 +132,14 @@ struct FrameMsgInfo {
   const uint8_t* frame_data;  // Full frame bytes, including framing overhead
   FrameMsgStatus status;
   const ParserDiagnostics* diagnostics;
+  // Header fields, for profiles (and system frames) that carry them.
+  uint8_t sequence = 0;
+  uint8_t system_id = 0;
+  uint8_t component_id = 0;
+  uint8_t package_id = 0;
+  // True for a system frame (payload type 9): msg_id is then a system message id
+  // (see sf_system_info.hpp), never an application message id.
+  bool is_system = false;
 
   FrameMsgInfo()
       : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr), frame_data(nullptr),
@@ -171,8 +179,13 @@ struct FrameMsgInfo {
  *                     expected message-struct size from get_message_info().
  *                     Vital for detecting mismatched definitions on profiles
  *                     that carry an explicit length.
+ * cnt_system_frames:  Valid system frames (payload type 9), delivered or hidden.
+ * cnt_system_rejected: Candidate system frames whose header named an unknown
+ *                     system message or an impossible length; the reader
+ *                     resynchronised at once instead of collecting a payload.
  * cnt_seq_gaps:       Sequence-number gaps. Only incremented on profiles that
- *                     carry a sequence field (e.g. ProfileNetwork). Indicates
+ *                     carry a sequence field (e.g. ProfileNetwork), and on system
+ *                     frames (counted separately from application frames). Indicates
  *                     dropped packets.
  */
 struct ParserDiagnostics {
@@ -181,9 +194,12 @@ struct ParserDiagnostics {
   uint32_t cnt_failed_bytes;
   uint32_t cnt_len_errors;
   uint32_t cnt_seq_gaps;
+  uint32_t cnt_system_frames;
+  uint32_t cnt_system_rejected;
 
   ParserDiagnostics()
-      : cnt_crc_failures(0), cnt_sync_recoveries(0), cnt_failed_bytes(0), cnt_len_errors(0), cnt_seq_gaps(0) {}
+      : cnt_crc_failures(0), cnt_sync_recoveries(0), cnt_failed_bytes(0), cnt_len_errors(0), cnt_seq_gaps(0),
+        cnt_system_frames(0), cnt_system_rejected(0) {}
 };
 
 inline const ParserDiagnostics& FrameMsgInfo::parser_diagnostics() const {

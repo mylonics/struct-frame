@@ -9,6 +9,7 @@ functions for binary compatibility across platforms.
 
 from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values, normalize_bytes_type
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
 import time
 
 _style_c = NamingStyleC()
@@ -45,6 +46,72 @@ def _c_scalar_default_literal(field):
     return f"{field.default}"
 
 
+def _c_struct_has_defaults(msg):
+    return msg is not None and getattr(msg, 'default_bytes', b"") not in (b"", b"\x00" * msg.size)
+
+
+def _c_struct_type(msg):
+    return '%s%s' % (pascal_case(msg.package), msg.name)
+
+
+def _c_is_struct_field(field):
+    return not field.is_default_type and not field.is_enum and field.type_ref is not None
+
+
+def _c_element_stmts(field, value, lhs, fresh):
+    """Statements giving the lvalue *lhs* (one element of *field*) the canonical *value*.
+
+    *fresh* means lhs is still all zero; otherwise (an override inside a struct that was
+    initialized to its own defaults) strings are cleared first so no stale bytes remain.
+    """
+    if field.is_enum:
+        return [f'{lhs} = {field.type_ref.data[value][0]}; /* {field.field_type}.{value} */']
+    if field.field_type in ("string", "bytes"):
+        data = value if isinstance(value, (bytes, bytearray)) else value.encode('utf-8')
+        stmts = []
+        target = lhs if (field.is_array or field.size_option is not None) else f'{lhs}.data'
+        if not fresh:
+            stmts.append(f'memset(&{lhs}, 0, sizeof({lhs}));')
+        if not (field.is_array or field.size_option is not None) and data:
+            stmts.append(f'{lhs}.length = {len(data)};')
+        if data:
+            stmts.append(f'memcpy({target}, (const uint8_t[]){{{_c_byte_array_literal(data)}}}, {len(data)});')
+        return stmts
+    if field.is_default_type:
+        return [f'{lhs} = {_lit.c_scalar(field.field_type, value)};']
+    # A struct value: the struct's own defaults, then the fields the value sets.
+    stmts = []
+    if fresh and _c_struct_has_defaults(field.type_ref):
+        stmts.append(f'{_c_struct_type(field.type_ref)}_init(&{lhs});')
+    for name, sub_value in value.items():
+        sub_field = field.type_ref.fields[name]
+        sub_fresh = fresh and not _c_struct_has_defaults(field.type_ref)
+        stmts.extend(_c_value_stmts(sub_field, sub_value, f'{lhs}.{name}', sub_fresh))
+    return stmts
+
+
+def _c_value_stmts(field, value, lhs, fresh):
+    """Statements giving the lvalue *lhs* of *field*'s type the canonical *value*."""
+    if not field.is_array:
+        return _c_element_stmts(field, value, lhs, fresh)
+    stmts = []
+    if not fresh:
+        stmts.append(f'memset(&{lhs}, 0, sizeof({lhs}));')
+    bounded = field.size_option is None
+    data = f'{lhs}.data' if bounded else lhs
+    capacity = field.max_size if bounded else field.size_option
+    struct_slots = _c_is_struct_field(field) and _c_struct_has_defaults(field.type_ref)
+    if struct_slots:
+        # Every slot starts at the element struct's defaults.
+        stmts.append(f'for (size_t i_ = 0; i_ < {capacity}; i_++) '
+                     f'{_c_struct_type(field.type_ref)}_init(&{data}[i_]);')
+    if bounded and value:
+        stmts.append(f'{lhs}.count = {len(value)};')
+    for index, item in enumerate(value):
+        stmts.extend(_c_element_stmts(field, item, f'{data}[{index}]', fresh=not struct_slots))
+    return stmts
+
+
 def _c_field_default_stmts(field):
     """Generate the C statement(s) that apply field's schema default onto an
     already-zeroed `msg`, for use inside <StructName>_init(). Returns a list
@@ -56,33 +123,17 @@ def _c_field_default_stmts(field):
     don't (see FileCGen.generate's `packed_structs`), so this assigns each
     defaulted field individually -- correct regardless of struct packing.
     """
-    if field.is_array or field.default is None:
-        if (not field.is_array and not field.is_default_type and not field.is_enum
-                and field.type_ref is not None
-                and getattr(field.type_ref, 'default_bytes', b"") != b"\x00" * getattr(field.type_ref, 'size', 0)):
-            # Nested message field with no default of its own, but its type
-            # has defaults somewhere inside it -- recurse so they still apply.
-            nested_struct = '%s%s' % (pascal_case(field.type_ref.package), field.type_ref.name)
-            return [f'{nested_struct}_init(&msg->{field.name});']
-        return []
-
-    if field.is_enum:
-        return [f'msg->{field.name} = {field.default_numeric}; /* {field.field_type}.{field.default} */']
-
-    if field.field_type in ("string", "bytes"):
-        text_bytes = field.default.encode('utf-8')
-        if not text_bytes:
-            return []
-        literal = _c_byte_array_literal(text_bytes)
-        if field.size_option is not None:
-            return [f'memcpy(msg->{field.name}, (const uint8_t[]){{{literal}}}, {len(text_bytes)});']
-        else:
-            return [
-                f'msg->{field.name}.length = {len(text_bytes)};',
-                f'memcpy(msg->{field.name}.data, (const uint8_t[]){{{literal}}}, {len(text_bytes)});',
-            ]
-
-    return [f'msg->{field.name} = {_c_scalar_default_literal(field)};']
+    lhs = f'msg->{field.name}'
+    if field.default is not None:
+        return _c_value_stmts(field, field.default, lhs, fresh=True)
+    if field.is_array:
+        # No default, but slots of a struct type with defaults start at those defaults.
+        return _c_value_stmts(field, [], lhs, fresh=True)
+    if _c_is_struct_field(field) and _c_struct_has_defaults(field.type_ref):
+        # Nested message field with no default of its own, but its type has defaults
+        # somewhere inside it -- recurse so they still apply.
+        return [f'{_c_struct_type(field.type_ref)}_init(&{lhs});']
+    return []
 
 
 class EnumCGen():
@@ -481,6 +532,7 @@ class MessageCGen():
         # Generate unified unpack() for messages with MSG_ID (both variable and non-variable)
         if msg.id is not None:
             result += MessageCGen._generate_unified_unpack(msg, structName, defineName)
+            result += MessageCGen._generate_default_helpers(msg, structName, defineName)
 
         # Generate equality function if requested
         if equality:
@@ -510,6 +562,33 @@ class MessageCGen():
 
         return result + '\n'
     
+    @staticmethod
+    def _generate_default_helpers(msg, structName, defineName):
+        """<S>_reset / <S>_is_default / <S>_<field>_is_default (compared by encoding)."""
+        S = structName
+        buf = f'{defineName}_MAX_SIZE + 1'
+        r = f'\n/** Reset *msg to its schema defaults (the same as {S}_init). */\n'
+        r += f'static inline void {S}_reset({S}* msg) {{ {S}_init(msg); }}\n'
+        r += '\n/* True when a and b encode to the same bytes. */\n'
+        r += f'static inline bool {S}_same_encoding_(const {S}* a, const {S}* b) {{\n'
+        r += f'    uint8_t x[{buf}], y[{buf}];\n'
+        r += f'    size_t nx = {S}_serialize(a, x), ny = {S}_serialize(b, y);\n'
+        r += '    return nx == ny && memcmp(x, y, nx) == 0;\n'
+        r += '}\n'
+        r += '\n/** True when *msg encodes exactly like a message at its schema defaults. */\n'
+        r += f'static inline bool {S}_is_default(const {S}* msg) {{\n'
+        r += f'    {S} d;\n    {S}_init(&d);\n'
+        r += f'    return {S}_same_encoding_(msg, &d);\n'
+        r += '}\n'
+        for name in msg.fields:
+            r += f'\n/** True when field {name} of *msg holds its schema default. */\n'
+            r += f'static inline bool {S}_{name}_is_default(const {S}* msg) {{\n'
+            r += f'    {S} d, probe;\n    {S}_init(&d);\n    {S}_init(&probe);\n'
+            r += f'    memcpy(&probe.{name}, &msg->{name}, sizeof(probe.{name}));\n'
+            r += f'    return {S}_same_encoding_(&probe, &d);\n'
+            r += '}\n'
+        return r
+
     @staticmethod
     def _generate_variable_functions(msg, structName, defineName, packed_structs=True):
         """Generate serialized_size and serialize (variable) functions for variable messages."""
@@ -995,6 +1074,8 @@ class FileCGen():
         if equality:
             yield '#include <string.h>\n'
         
+        if _lit.package_needs_math(package):
+            yield '#include <math.h>  /* INFINITY / NAN */\n'
         # Include generated headers for imported packages (enables language server navigation)
         if imported_packages:
             for pkg_name in imported_packages:
@@ -1010,6 +1091,17 @@ class FileCGen():
             pkg_name_upper = camel_to_snake_case(package.name).upper()
             yield f'/* Package ID for extended message IDs */\n'
             yield f'#define {pkg_name_upper}_PACKAGE_ID {package.package_id}\n\n'
+
+        consts = _lit.package_consts(package)
+        if consts:
+            prefix = camel_to_snake_case(package.name).upper()
+            yield '/* Constants */\n'
+            for const in consts:
+                for line in _lit.doc_lines(const.comments):
+                    yield f'/* {line} */\n' if line else '\n'
+                yield _lit.c_const_define(f'{prefix}_{_lit.const_name(const)}', const.const_type,
+                                          const.value) + '\n'
+            yield '\n'
 
         # include additional header files if available in the future
 

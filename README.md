@@ -38,18 +38,20 @@ JavaScript use Node's `Buffer`; the optional SDK transports have a few dependenc
 
 ## Example
 
-`robot.sf` (`.sf` is the preferred extension; `.proto` files with the same syntax also work):
+`robot.sf`, written in the struct-frame schema language:
 
-```proto
+```sf
 package robot;
 
-enum Mode { IDLE = 0; DRIVE = 1; }
+enum Mode {
+  IDLE = 0;
+  DRIVE = 1;
+}
 
-message Status {
-  option msgid = 1;
-  uint32 uptime_ms = 1;
-  float battery_v = 2;
-  Mode mode = 3;
+message Status @1 {
+  uint32 uptime_ms;
+  float battery_v;
+  Mode mode;
 }
 ```
 

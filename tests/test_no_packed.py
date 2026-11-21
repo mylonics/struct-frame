@@ -105,14 +105,11 @@ def test_all_variable_messages_no_fixed_run_memcpy() -> None:
     proto = """\
 package all_variable_pad;
 
-message PadMsg {
-  option msgid = 1;
-  option variable = true;
-
-  uint8 a = 1;
-  uint32 b = 2;
-  uint8 tail = 3;
-  string name = 4 [max_size=8];
+message PadMsg @1 [variable] {
+  uint8 a;
+  uint32 b;
+  uint8 tail;
+  string<8> name;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:

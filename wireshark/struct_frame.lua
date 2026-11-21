@@ -10,7 +10,7 @@
 --
 -- Usage:
 --   The dissector will automatically decode struct-frame protocols
---   based on the start bytes (0x90 for Basic, 0x70-0x78 for Tiny)
+--   based on the start bytes (0x90 for Basic, 0x70-0x79 for Tiny; 0x79 = system frame)
 
 -- Protocol definition
 local struct_frame_proto = Proto("struct_frame", "Struct Frame Protocol")
@@ -52,7 +52,8 @@ local payload_types = {
     [5] = "SysComp",
     [6] = "Seq",
     [7] = "MultiSystemStream",
-    [8] = "ExtendedMultiSystemStream"
+    [8] = "ExtendedMultiSystemStream",
+    [9] = "System"
 }
 
 -- Profile name mapping for common combinations
@@ -61,7 +62,26 @@ local profile_names = {
     ["TinyMinimal"] = "Sensor (Low-Bandwidth)",
     ["NoneMinimal"] = "IPC (Trusted Inter-Process)",
     ["BasicExtended"] = "Bulk (Large Data Transfers)",
-    ["BasicExtendedMultiSystemStream"] = "Network (Multi-Node Mesh)"
+    ["BasicExtendedMultiSystemStream"] = "Network (Multi-Node Mesh)",
+    ["BasicSystem"] = "System frame",
+    ["TinySystem"] = "System frame"
+}
+
+-- System frames (payload type 9) carry struct-frame's own messages (sf_system.sf). Their
+-- checksum magic comes from that built-in schema, so it needs no preference.
+-- tests/test_builtin_sync.py keeps this table in step with the schema.
+local system_messages = {
+    [0x01] = { "Heartbeat", 58, 250 },
+    [0x02] = { "LinkStats", 88, 134 },
+    [0x10] = { "Ping", 28, 82 },
+    [0x11] = { "Pong", 25, 56 },
+    [0x20] = { "LinkTestStart", 70, 72 },
+    [0x21] = { "LinkTestAck", 11, 22 },
+    [0x22] = { "LinkTestData", 9, 15 },
+    [0x23] = { "LinkTestStop", 2, 2 },
+    [0x24] = { "LinkTestReport", 107, 39 },
+    [0x30] = { "RpcRequest", 31, 99 },
+    [0x31] = { "RpcResponse", 24, 68 }
 }
 
 -- Payload structure definitions
@@ -146,6 +166,15 @@ local payload_structures = {
         length_bytes = 2,
         has_package_id = true,
         has_crc = true
+    },
+    [9] = { -- System (struct-frame's own messages)
+        has_sequence = true,
+        has_system_id = true,
+        has_component_id = true,
+        has_length = true,
+        length_bytes = 2,
+        has_package_id = false,
+        has_crc = true
     }
 }
 
@@ -216,7 +245,7 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
         header_type = "Basic"
         start_bytes = 2
         payload_type_offset = buffer(1, 1):uint() - 0x70
-    elseif first_byte >= 0x70 and first_byte <= 0x78 then
+    elseif first_byte >= 0x70 and first_byte <= 0x79 then
         -- Tiny frame (1 start byte)
         header_type = "Tiny"
         start_bytes = 1
@@ -229,7 +258,7 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
     end
     
     -- Validate payload type
-    if payload_type_offset < 0 or payload_type_offset > 8 then
+    if payload_type_offset < 0 or payload_type_offset > 9 then
         return
     end
     
@@ -320,7 +349,13 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
     -- Message ID
     if offset + 1 > length then return end
     local msg_id = buffer(offset, 1):uint()
-    subtree:add(f_message_id, buffer(offset, 1))
+    local is_system = payload_type_offset == 9
+    local system_message = is_system and system_messages[msg_id] or nil
+    local msg_item = subtree:add(f_message_id, buffer(offset, 1))
+    if is_system then
+        msg_item:append_text(system_message and (" (system: " .. system_message[1] .. ")")
+                                             or " (unknown system message)")
+    end
     offset = offset + 1
     
     -- Payload data
@@ -368,7 +403,12 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
         if crc_start_offset then
             local crc_data_len = offset - crc_start_offset
             local crc_data = buffer(crc_start_offset, crc_data_len)
-            local magic1, magic2 = lookup_magic(pkg_id_value, msg_id)
+            local magic1, magic2
+            if is_system then
+                if system_message then magic1, magic2 = system_message[2], system_message[3] end
+            else
+                magic1, magic2 = lookup_magic(pkg_id_value, msg_id)
+            end
             local calc_crc1, calc_crc2 = fletcher16(crc_data, magic1, magic2)
             
             if calc_crc1 == received_crc1 and calc_crc2 == received_crc2 then
@@ -388,7 +428,12 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
     end
     
     -- Update info column
-    pinfo.cols.info = string.format("%s - Msg ID: %d", display_name, msg_id)
+    if is_system then
+        pinfo.cols.info = string.format("System frame - %s",
+            system_message and system_message[1] or string.format("unknown 0x%02X", msg_id))
+    else
+        pinfo.cols.info = string.format("%s - Msg ID: %d", display_name, msg_id)
+    end
 end
 
 -- Register the dissector
@@ -408,18 +453,18 @@ function heuristic_checker(buffer, pinfo, tree)
     
     local first_byte = buffer(0, 1):uint()
     
-    -- Check for Basic frame (0x90 followed by 0x70-0x78)
+    -- Check for Basic frame (0x90 followed by 0x70-0x79; 0x79 = system frame)
     if first_byte == 0x90 then
         if buffer:len() < 2 then return false end
         local second_byte = buffer(1, 1):uint()
-        if second_byte >= 0x70 and second_byte <= 0x78 then
+        if second_byte >= 0x70 and second_byte <= 0x79 then
             struct_frame_proto.dissector(buffer, pinfo, tree)
             return true
         end
     end
     
-    -- Check for Tiny frame (0x70-0x78)
-    if first_byte >= 0x70 and first_byte <= 0x78 then
+    -- Check for Tiny frame (0x70-0x79; 0x79 = system frame)
+    if first_byte >= 0x70 and first_byte <= 0x79 then
         struct_frame_proto.dissector(buffer, pinfo, tree)
         return true
     end

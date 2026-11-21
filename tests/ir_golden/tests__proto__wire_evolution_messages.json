@@ -1,0 +1,1270 @@
+{
+ "ir": {
+  "documentation_hash": "542d06dba9bcd1a24b79d39c08939c126b49cee00286455e4bba5e13a59ec218",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {},
+    "file_docs": {
+     "wire_evolution_messages.sf": [
+      "// Wire-evolution test messages for struct-frame code generation framework.",
+      "//",
+      "// Tests the extensions_start mechanism for both top-level message fields and",
+      "// for variants inside a oneof block.  Extension fields/variants are excluded",
+      "// from the magic-byte computation (so older parsers still validate the base",
+      "// portion) but are still mixed into the CRC (so corruption is detected).",
+      "//",
+      "// Four scenarios are exercised:",
+      "//  1. BaseExtensionMessage    \u2014 top-level extension fields, fixed-size base",
+      "//  2. VariableExtensionMessage \u2014 top-level extensions, variable-length base",
+      "//  3. OneOfExtensionMessage   \u2014 extension variants inside a single oneof",
+      "//  4. MultiOneOfExtensionMessage \u2014 two oneofs, the second has extension variants",
+      "//",
+      "// Syntax notes:",
+      "//  \u2022 option extensions_start = N;  \u2014 canonical marker (message or oneof scope)",
+      "//    The next field/variant with number >= N is an extension field.",
+      "//"
+     ]
+    },
+    "messages": {
+     "BaseCommandA": {
+      "_class": "Message",
+      "base_size": 6,
+      "comments": [
+       "// ============================================================================",
+       "// Shared sub-message types used inside oneofs",
+       "// ============================================================================",
+       "// Used as a base oneof variant (no msgid \u2014 discriminator uses field_order)"
+      ],
+      "default_bytes": {
+       "hex": "000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "flags_a": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "flags_a",
+        "number": 2,
+        "package": "wire_evolution",
+        "size": 2,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value_a": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value_a",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 4,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Shared sub-message types used inside oneofs",
+       "// ============================================================================",
+       "// Used as a base oneof variant (no msgid \u2014 discriminator uses field_order)"
+      ],
+      "magic_bytes": [
+       11,
+       17
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "BaseCommandA",
+      "oneofs": {},
+      "package": "wire_evolution",
+      "size": 6,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "BaseCommandB": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// Used as a base oneof variant"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "active_b": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "active_b",
+        "number": 2,
+        "package": "wire_evolution",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value_b": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value_b",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 2,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Used as a base oneof variant"
+      ],
+      "magic_bytes": [
+       14,
+       19
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "BaseCommandB",
+      "oneofs": {},
+      "package": "wire_evolution",
+      "size": 3,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "BaseExtensionMessage": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 1 \u2014 standard message with top-level extension fields (fixed base)",
+       "// ============================================================================",
+       "//",
+       "// Base wire format: header(2) + seq(1) = 3 bytes",
+       "// Extension: crc_seed(4) is appended when the sender is extension-aware.",
+       "// Older parsers see a 3-byte payload; magic is derived only from the 2 base",
+       "// fields, so they compute the same magic byte as a v2 sender."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": 3,
+      "fields": {
+       "crc_seed": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": true,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "crc_seed",
+        "number": 3,
+        "package": "wire_evolution",
+        "size": 4,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "header": {
+        "_class": "Field",
+        "comments": [
+         "// Base fields \u2014 always present on the wire"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Base fields \u2014 always present on the wire"
+        ],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 2,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "seq": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "seq",
+        "number": 2,
+        "package": "wire_evolution",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 1 \u2014 standard message with top-level extension fields (fixed base)",
+       "// ============================================================================",
+       "//",
+       "// Base wire format: header(2) + seq(1) = 3 bytes",
+       "// Extension: crc_seed(4) is appended when the sender is extension-aware.",
+       "// Older parsers see a 3-byte payload; magic is derived only from the 2 base",
+       "// fields, so they compute the same magic byte as a v2 sender."
+      ],
+      "magic_bytes": [
+       7,
+       11
+      ],
+      "magic_bytes_override": null,
+      "min_size": 7,
+      "name": "BaseExtensionMessage",
+      "oneofs": {},
+      "package": "wire_evolution",
+      "size": 7,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "ExtCommandC": {
+      "_class": "Message",
+      "base_size": 5,
+      "comments": [
+       "// Used as an extension oneof variant \u2014 older receivers treat it as unknown"
+      ],
+      "default_bytes": {
+       "hex": "0000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "mode_c": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "mode_c",
+        "number": 2,
+        "package": "wire_evolution",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value_c": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value_c",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 4,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Used as an extension oneof variant \u2014 older receivers treat it as unknown"
+      ],
+      "magic_bytes": [
+       12,
+       21
+      ],
+      "magic_bytes_override": null,
+      "min_size": 5,
+      "name": "ExtCommandC",
+      "oneofs": {},
+      "package": "wire_evolution",
+      "size": 5,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "ExtCommandD": {
+      "_class": "Message",
+      "base_size": 8,
+      "comments": [
+       "// Used as a second extension oneof variant"
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "value_d": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "double",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value_d",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 8,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Used as a second extension oneof variant"
+      ],
+      "magic_bytes": [
+       10,
+       10
+      ],
+      "magic_bytes_override": null,
+      "min_size": 8,
+      "name": "ExtCommandD",
+      "oneofs": {},
+      "package": "wire_evolution",
+      "size": 8,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "MultiOneOfExtensionMessage": {
+      "_class": "Message",
+      "base_size": 15,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 4 \u2014 message with two oneofs, only the second has extension variants",
+       "// ============================================================================",
+       "//",
+       "// Verifies that per-oneof base_size is tracked independently, and that the",
+       "// message-level base_size sums correctly."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "priority": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "priority",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 4,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 4 \u2014 message with two oneofs, only the second has extension variants",
+       "// ============================================================================",
+       "//",
+       "// Verifies that per-oneof base_size is tracked independently, and that the",
+       "// message-level base_size sums correctly."
+      ],
+      "magic_bytes": [
+       125,
+       252
+      ],
+      "magic_bytes_override": null,
+      "min_size": 15,
+      "name": "MultiOneOfExtensionMessage",
+      "oneofs": {
+       "base_union": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [
+         "// First oneof \u2014 all base variants, no extensions"
+        ],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "first_a",
+         "first_b"
+        ],
+        "fields": {
+         "first_a": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "first_a",
+          "number": 1,
+          "package": "wire_evolution",
+          "size": 6,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandA",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         },
+         "first_b": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "first_b",
+          "number": 2,
+          "package": "wire_evolution",
+          "size": 3,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandB",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// First oneof \u2014 all base variants, no extensions"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "base_union",
+        "package": "wire_evolution",
+        "size": 6,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "first_a",
+          6
+         ],
+         [
+          2,
+          "first_b",
+          3
+         ]
+        ]
+       },
+       "ext_union": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [
+         "// Second oneof \u2014 has extension variants"
+        ],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": 2,
+        "field_order": [
+         "second_a",
+         "second_ext"
+        ],
+        "fields": {
+         "second_a": {
+          "_class": "Field",
+          "comments": [
+           "// Base variant"
+          ],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [
+           "// Base variant"
+          ],
+          "max_size": null,
+          "name": "second_a",
+          "number": 1,
+          "package": "wire_evolution",
+          "size": 6,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandA",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         },
+         "second_ext": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ExtCommandC",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": true,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "second_ext",
+          "number": 2,
+          "package": "wire_evolution",
+          "size": 5,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "ExtCommandC",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// Second oneof \u2014 has extension variants"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "ext_union",
+        "package": "wire_evolution",
+        "size": 6,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          5,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "second_a",
+          6
+         ],
+         [
+          2,
+          "second_ext",
+          5
+         ]
+        ]
+       }
+      },
+      "package": "wire_evolution",
+      "size": 15,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "OneOfExtensionMessage": {
+      "_class": "Message",
+      "base_size": 8,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 3 \u2014 message with a single oneof that contains extension variants",
+       "// ============================================================================",
+       "//",
+       "// The oneof 'command' has two base variants (field_order 1 and 2) and two",
+       "// extension variants (field_order 3 and 4).  The magic bytes are computed only",
+       "// from base variants; the message base_size is derived from the largest base",
+       "// variant.  An older parser cannot decode an ext variant payload but still",
+       "// validates the CRC (extension bytes are mixed in after the magic)."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "device_id": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed header always present"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed header always present"
+        ],
+        "max_size": null,
+        "name": "device_id",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 3,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 3 \u2014 message with a single oneof that contains extension variants",
+       "// ============================================================================",
+       "//",
+       "// The oneof 'command' has two base variants (field_order 1 and 2) and two",
+       "// extension variants (field_order 3 and 4).  The magic bytes are computed only",
+       "// from base variants; the message base_size is derived from the largest base",
+       "// variant.  An older parser cannot decode an ext variant payload but still",
+       "// validates the CRC (extension bytes are mixed in after the magic)."
+      ],
+      "magic_bytes": [
+       254,
+       127
+      ],
+      "magic_bytes_override": null,
+      "min_size": 10,
+      "name": "OneOfExtensionMessage",
+      "oneofs": {
+       "command": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": 3,
+        "field_order": [
+         "cmd_a",
+         "cmd_b",
+         "cmd_c",
+         "cmd_d"
+        ],
+        "fields": {
+         "cmd_a": {
+          "_class": "Field",
+          "comments": [
+           "// Base variants \u2014 older parsers understand these"
+          ],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [
+           "// Base variants \u2014 older parsers understand these"
+          ],
+          "max_size": null,
+          "name": "cmd_a",
+          "number": 1,
+          "package": "wire_evolution",
+          "size": 6,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandA",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         },
+         "cmd_b": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "cmd_b",
+          "number": 2,
+          "package": "wire_evolution",
+          "size": 3,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandB",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         },
+         "cmd_c": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ExtCommandC",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": true,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "cmd_c",
+          "number": 3,
+          "package": "wire_evolution",
+          "size": 5,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "ExtCommandC",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         },
+         "cmd_d": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ExtCommandD",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": true,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "cmd_d",
+          "number": 4,
+          "package": "wire_evolution",
+          "size": 8,
+          "size_option": null,
+          "source_file": "wire_evolution_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution",
+          "type_ref": {
+           "message": null,
+           "name": "ExtCommandD",
+           "package": "wire_evolution",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "command",
+        "package": "wire_evolution",
+        "size": 8,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          5,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          8,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "cmd_a",
+          6
+         ],
+         [
+          2,
+          "cmd_b",
+          3
+         ],
+         [
+          3,
+          "cmd_c",
+          5
+         ],
+         [
+          4,
+          "cmd_d",
+          8
+         ]
+        ]
+       }
+      },
+      "package": "wire_evolution",
+      "size": 10,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "VariableExtensionMessage": {
+      "_class": "Message",
+      "base_size": 34,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 2 \u2014 variable-length message with top-level extension fields",
+       "// ============================================================================",
+       "//",
+       "// This verifies that extensions play nicely with variable encoding: the base",
+       "// portion is variable (contains a bounded array) while the extension portion",
+       "// is a plain fixed field appended after the base."
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": 3,
+      "fields": {
+       "ext_timestamp": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": true,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "ext_timestamp",
+        "number": 3,
+        "package": "wire_evolution",
+        "size": 4,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "node_id": {
+        "_class": "Field",
+        "comments": [
+         "// Base fields"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Base fields"
+        ],
+        "max_size": null,
+        "name": "node_id",
+        "number": 1,
+        "package": "wire_evolution",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "readings": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 16,
+        "name": "readings",
+        "number": 2,
+        "package": "wire_evolution",
+        "size": 33,
+        "size_option": null,
+        "source_file": "wire_evolution_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 2 \u2014 variable-length message with top-level extension fields",
+       "// ============================================================================",
+       "//",
+       "// This verifies that extensions play nicely with variable encoding: the base",
+       "// portion is variable (contains a bounded array) while the extension portion",
+       "// is a plain fixed field appended after the base."
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 2,
+      "name": "VariableExtensionMessage",
+      "oneofs": {},
+      "package": "wire_evolution",
+      "size": 38,
+      "source_file": "wire_evolution_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     }
+    },
+    "name": "wire_evolution",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "a09a63c6bb022649820f6d61db4dbaf1ec86b001b1439ad5808a1d4461294a0a"
+ },
+ "outputs": {
+  "c/structframe_all.h": "8971fd478cbb8560acd1b8a970218614b8ce91a0709899392fb203eb4ecf1aa0",
+  "c/test_roundtrip_wire_evolution.c": "07a0b877da10b6795c48f0c7db40290afce231683dbd78c84974e7a318a73fa4",
+  "c/wire_evolution.structframe.h": "853b326143974b713dc0692dedf9d366393102831900c85d54086d85edb32565",
+  "c/wire_evolution.tests.h": "99e81f938cbd72ee8e3866e2fb94109762f25f2d0469edb019aba52df887e04d",
+  "cpp/structframe_all.hpp": "181c685c3ac879fac248652a0410dbe527f7543edbedcf53dacdf8ecd5962712",
+  "cpp/test_roundtrip_wire_evolution.cpp": "a20a71604e91a155e062bc15a4205003a7e9c6672eac678c91a1f523f124bd87",
+  "cpp/wire_evolution.structframe.hpp": "e6aec5b5a46e58d23441f69854ef359bb4e88dfbcc4dc92cb8f39413cedc6650",
+  "cpp/wire_evolution.tests.hpp": "c9db10e7e8a461b64664a335e474aa13ed7458f796c09dbde4e6307225bbedc7",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "csharp/WireEvolution/Constants.cs": "e1f1f3025b0bec41d3c587b7bb447d5a1d1fd5ff54f8ed00c34b88e5e7643d37",
+  "csharp/WireEvolution/Enums/MultiOneOfExtensionMessageBaseUnionField.cs": "45ddb987641d7469f4f0124df9df304b524a3bfe032f13fe0b2a477bbcff5254",
+  "csharp/WireEvolution/Enums/MultiOneOfExtensionMessageExtUnionField.cs": "7f136350df9a26d8e86b10721f7b0c9baec0ceab461355b1920f0a034b5615c2",
+  "csharp/WireEvolution/Enums/OneOfExtensionMessageCommandField.cs": "230b93b0a1225c314285978b9733ae477390562abfe9481d5823e63a253418ee",
+  "csharp/WireEvolution/MessageDefinitions.cs": "565a143ec91b0658a17a964746f109a1eda6c8ea4c81883ff5a9374d61a9d9fd",
+  "csharp/WireEvolution/Messages/BaseCommandA.cs": "8e2eb00737696949ab8e501ce28b2ec0b0ace2d061a7f1e49fff6f557c5ac1ca",
+  "csharp/WireEvolution/Messages/BaseCommandB.cs": "38001796dcb6cea38653ed39594d1e930fe3a130f23cf6e2a223feb058b978fc",
+  "csharp/WireEvolution/Messages/BaseExtensionMessage.cs": "22824b04eddc62bd00c40ff7ae460e1cf7ac6ccc4ab3bf879dc1a94dc1d44192",
+  "csharp/WireEvolution/Messages/ExtCommandC.cs": "787af6476a50ceca82047142608c2cd7511f1b2f383659423df10febe7eec9c5",
+  "csharp/WireEvolution/Messages/ExtCommandD.cs": "34c2ee7dc3b83078105a85f924fcc2ec32f7154d32c4f3a49141de8c810d1f20",
+  "csharp/WireEvolution/Messages/MultiOneOfExtensionMessage.cs": "143213b9c1bafc6e7c6a36af29d4f3faeb415c99ac082ec88360e56131381495",
+  "csharp/WireEvolution/Messages/OneOfExtensionMessage.cs": "a92441fef082f31bd994507ab4154328dee2616938422d150cbbb5c5873faba9",
+  "csharp/WireEvolution/Messages/VariableExtensionMessage.cs": "e74c418df42f83971335fc10a7fb74ad969169ff82b87463c2f0d9e4e08a2cbe",
+  "csharp/WireEvolution/SdkInterface.cs": "906838e2b074af463f537d188f849368cef66eb825220af115250d52cf4867e5",
+  "csharp/WireEvolution/test_roundtrip_wire_evolution.cs": "309c84d9f035714d9b95cc6f16d70d9b104997b78eed63be55978b89c73f6c4c",
+  "gql/schema.graphql": "1d7a85b6432d50e77ebc9d80ae7fa8c42529394f372651b67a51e1da0328e3e9",
+  "gql/wire_evolution.graphql": "66acda224ac72a4f638e0fa9b2f09dd35fd3ab9454a5b280fd34d240451fe9c7",
+  "js/test_roundtrip_wire_evolution.js": "cf8e53f79843d2e2bd47021bef861a2a23407c61022e2a7f49ed9170fcc69a11",
+  "js/wire-evolution.structframe.js": "39cc00d09a81bdf191eb9f52ad9170b3ada7f54426f3990786880515cf393172",
+  "py/structframe/wire_evolution.py": "a44cd8978f639751fb4ed3c34093c942ee8a811811e44e2d840362b66018e42b",
+  "py/structframe/wire_evolution_tests.py": "eb7ad3d4a54bb7855140a44ea955bd597b9958bf03b66495756b22a56500c85b",
+  "py/test_roundtrip_wire_evolution.py": "967fe4a7326933172aafcec6c8125a07d397f14ba144f37245d73e6fa1966442",
+  "rust/Cargo.toml": "b4f27bcbfdab77b5cda97a3b209f4831154cdb96b0f4848aac8d343704df757b",
+  "rust/test_roundtrip_wire_evolution.rs": "56ce30b0b697b63d4e7f08f3e262f87d97feb1b5d381f996285a0306f6891a32",
+  "rust/wire_evolution.structframe.rs": "d3984c5355091add2845b5b50003a31c12470d3ef8c5d3c80dccf6cf40344ea3",
+  "sf_compile.json": "80138813d1a219dce08a0d84eed634193d0f6fe255a33d808877c6f5f1e55a2d",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_wire_evolution.ts": "7da939b78e0ac1cb528f5e3f7a7a048e1afd1cd9668ce1744e3a6a2b5e7de5b8",
+  "ts/wire-evolution.structframe.ts": "c6ff85a8f82aa436cbacc571b1a08a8689c796bc3bff174f751590248f67a037"
+ },
+ "outputs_no_packed": {
+  "c/structframe_all.h": "8971fd478cbb8560acd1b8a970218614b8ce91a0709899392fb203eb4ecf1aa0",
+  "c/test_roundtrip_wire_evolution.c": "07a0b877da10b6795c48f0c7db40290afce231683dbd78c84974e7a318a73fa4",
+  "c/wire_evolution.structframe.h": "d556458bb1086aeb8ae94e3c273b77801aed74d135b3f64c73c6676ff0e85354",
+  "c/wire_evolution.tests.h": "99e81f938cbd72ee8e3866e2fb94109762f25f2d0469edb019aba52df887e04d",
+  "cpp/structframe_all.hpp": "181c685c3ac879fac248652a0410dbe527f7543edbedcf53dacdf8ecd5962712",
+  "cpp/test_roundtrip_wire_evolution.cpp": "a20a71604e91a155e062bc15a4205003a7e9c6672eac678c91a1f523f124bd87",
+  "cpp/wire_evolution.structframe.hpp": "2908b334f6f2dc6658c6db300f520101f5e2f5b7cda7effbf86defb376eb6c44",
+  "cpp/wire_evolution.tests.hpp": "c9db10e7e8a461b64664a335e474aa13ed7458f796c09dbde4e6307225bbedc7",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "csharp/WireEvolution/Constants.cs": "0161a36fa240586bcd2dc3734599031c79e345b07605f8187644f20b56070de2",
+  "csharp/WireEvolution/Enums/MultiOneOfExtensionMessageBaseUnionField.cs": "45ddb987641d7469f4f0124df9df304b524a3bfe032f13fe0b2a477bbcff5254",
+  "csharp/WireEvolution/Enums/MultiOneOfExtensionMessageExtUnionField.cs": "7f136350df9a26d8e86b10721f7b0c9baec0ceab461355b1920f0a034b5615c2",
+  "csharp/WireEvolution/Enums/OneOfExtensionMessageCommandField.cs": "230b93b0a1225c314285978b9733ae477390562abfe9481d5823e63a253418ee",
+  "csharp/WireEvolution/MessageDefinitions.cs": "6a5db62af5ae9277bd6b7d18ee0691cab534a17324bea3f573f8ac5afcfd5be0",
+  "csharp/WireEvolution/Messages/BaseCommandA.cs": "ac2832a85773fa01a75ec128e544ae6bb09fb6e8054b3afc4b0754aad62d9bf4",
+  "csharp/WireEvolution/Messages/BaseCommandB.cs": "67cb6ca47addead345847bd59015528683cc14e3d84fc2a4601c2e9525567871",
+  "csharp/WireEvolution/Messages/BaseExtensionMessage.cs": "1a67fb60696626fdf2511c0bc5ca0d0315fd442d63b6412730b2ffef88026bbc",
+  "csharp/WireEvolution/Messages/ExtCommandC.cs": "f0858129e76736e122df035318362c5b262c8b95ae5b6d52964f7d4695aeb74f",
+  "csharp/WireEvolution/Messages/ExtCommandD.cs": "6c03bebd880c45f2df300b78318dc44827ab34dd7ea032a8a2e4a36e30e2ca85",
+  "csharp/WireEvolution/Messages/MultiOneOfExtensionMessage.cs": "e08a4302702ec39dbdcfde5e2fd5bee8eab7e42a4bfe3b6b125a631218e8097a",
+  "csharp/WireEvolution/Messages/OneOfExtensionMessage.cs": "9c6d52ca94e7838e6bc1acd819955a82fe26bba10069eb0d6c4efa8c8ff7d571",
+  "csharp/WireEvolution/Messages/VariableExtensionMessage.cs": "e74c418df42f83971335fc10a7fb74ad969169ff82b87463c2f0d9e4e08a2cbe",
+  "csharp/WireEvolution/SdkInterface.cs": "906838e2b074af463f537d188f849368cef66eb825220af115250d52cf4867e5",
+  "csharp/WireEvolution/test_roundtrip_wire_evolution.cs": "309c84d9f035714d9b95cc6f16d70d9b104997b78eed63be55978b89c73f6c4c",
+  "gql/schema.graphql": "1d7a85b6432d50e77ebc9d80ae7fa8c42529394f372651b67a51e1da0328e3e9",
+  "gql/wire_evolution.graphql": "66acda224ac72a4f638e0fa9b2f09dd35fd3ab9454a5b280fd34d240451fe9c7",
+  "js/test_roundtrip_wire_evolution.js": "cf8e53f79843d2e2bd47021bef861a2a23407c61022e2a7f49ed9170fcc69a11",
+  "js/wire-evolution.structframe.js": "3876a074ddf30b8afc05049a8fcdb257b7603969c64b9c8426cbff61e25868d7",
+  "py/structframe/wire_evolution.py": "c9f1961747bc5c177081e5559513fdc152ee5f799a6db5ce142f02474c65f74a",
+  "py/structframe/wire_evolution_tests.py": "eb7ad3d4a54bb7855140a44ea955bd597b9958bf03b66495756b22a56500c85b",
+  "py/test_roundtrip_wire_evolution.py": "967fe4a7326933172aafcec6c8125a07d397f14ba144f37245d73e6fa1966442",
+  "rust/Cargo.toml": "b4f27bcbfdab77b5cda97a3b209f4831154cdb96b0f4848aac8d343704df757b",
+  "rust/test_roundtrip_wire_evolution.rs": "56ce30b0b697b63d4e7f08f3e262f87d97feb1b5d381f996285a0306f6891a32",
+  "rust/wire_evolution.structframe.rs": "34c58a3e375ced3daa69cdc3b1501d505944453249ee33f2214aa97a7f3a02b6",
+  "sf_compile.json": "d7747ef72297eac6fb37891f0d299771b03c152a6a0f35ab45b301b8306a6659",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_wire_evolution.ts": "7da939b78e0ac1cb528f5e3f7a7a048e1afd1cd9668ce1744e3a6a2b5e7de5b8",
+  "ts/wire-evolution.structframe.ts": "6f64420c5d5f3e54f41e0e3c5e328cdaba8cbe9ebcc6825abea4168b28a96756"
+ },
+ "schema": "tests/proto/wire_evolution_messages.sf"
+}

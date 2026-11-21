@@ -13,6 +13,8 @@ namespace StructFrame.Framing
     {
         private readonly ProfileConfig _config;
         private readonly BufferParser _parser;
+        private readonly ProfileConfig? _sysConfig;
+        private readonly BufferParser? _sysParser;
         private byte[]? _buffer;
         private int _offset;
         private int _size;
@@ -22,7 +24,15 @@ namespace StructFrame.Framing
         {
             _config = config;
             _parser = new BufferParser(config, getMessageInfo);
+            _sysConfig = SystemFrames.ConfigOrNull(config);
+            _sysParser = _sysConfig == null ? null : new BufferParser(_sysConfig, SystemFrames.GetMessageInfo);
         }
+
+        /// <summary>
+        /// Return system frames (<see cref="FrameMsgInfo.IsSystem"/>) from <see cref="Next"/> instead
+        /// of skipping them. Profiles without start bytes never carry system frames.
+        /// </summary>
+        public bool DeliverSystemFrames { get; set; }
 
         /// <summary>
         /// Set the buffer to read from.
@@ -47,12 +57,24 @@ namespace StructFrame.Framing
         /// </summary>
         public FrameMsgInfo Next()
         {
+            while (true)
+            {
+                var result = NextFrame();
+                if (result.Valid && result.IsSystem && !DeliverSystemFrames) continue;
+                return result;
+            }
+        }
+
+        private FrameMsgInfo NextFrame()
+        {
             if (_buffer == null || _offset >= _size)
             {
                 return FrameMsgInfo.Invalid;
             }
 
-            var result = _parser.Parse(_buffer, _offset, _size - _offset);
+            var result = SystemFrames.IsSystemStart(_sysConfig, _buffer, _offset, _size - _offset)
+                ? SystemFrames.Parse(_sysConfig!, _sysParser!, _buffer, _offset, _size - _offset)
+                : _parser.Parse(_buffer, _offset, _size - _offset);
 
             if (result.FrameSize > 0)
             {
@@ -75,8 +97,7 @@ namespace StructFrame.Framing
                 }
                 else if (searchLen > 0)
                 {
-                    int found = Array.IndexOf(_buffer, _config.ComputedStartByte1, searchFrom, searchLen);
-                    _offset = found >= 0 ? found : _size;
+                    _offset = SystemFrames.FindStart(_config, _sysConfig, _buffer, searchFrom, _size);
                 }
                 else
                 {

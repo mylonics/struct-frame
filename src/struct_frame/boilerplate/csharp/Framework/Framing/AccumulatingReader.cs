@@ -55,6 +55,22 @@ namespace StructFrame.Framing
         private byte _lastSeq;
         private bool _lastSeqValid;
 
+        // System frames (payload type 9) share the profile's header; their sequence numbers
+        // are counted separately from the application frames'.
+        private readonly ProfileConfig? _sysConfig;
+        private readonly BufferParser? _sysParser;
+        private byte _lastSysSeq;
+        private bool _lastSysSeqValid;
+        // Stream mode: profile of the frame being collected (application or system).
+        private ProfileConfig _cfg;
+
+        /// <summary>
+        /// Return system frames (<see cref="FrameMsgInfo.IsSystem"/>) from <see cref="Next"/> and
+        /// <see cref="PushByte"/> instead of only counting them (<see cref="ParserDiagnostics.CntSystemFrames"/>).
+        /// Profiles without start bytes never carry system frames.
+        /// </summary>
+        public bool DeliverSystemFrames { get; set; }
+
         /// <summary>Creates a reader for the supplied profile.</summary>
         public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null)
         {
@@ -62,6 +78,9 @@ namespace StructFrame.Framing
             _bufferSize = bufferSize;
             _getMessageInfo = getMessageInfo;
             _parser = new BufferParser(config, getMessageInfo);
+            _sysConfig = SystemFrames.ConfigOrNull(config);
+            _sysParser = _sysConfig == null ? null : new BufferParser(_sysConfig, SystemFrames.GetMessageInfo);
+            _cfg = config;
             _internalBuffer = new byte[bufferSize];
             _diagnostics = default;
             _lastSeq = 0;
@@ -82,6 +101,8 @@ namespace StructFrame.Framing
             _currentSize = 0;
             _bytesAppendedToInternal = 0;
             _lastSeqValid = false;
+            _lastSysSeqValid = false;
+            _cfg = _config;
         }
 
         /// <summary>
@@ -155,6 +176,39 @@ namespace StructFrame.Framing
         /// </summary>
         public FrameMsgInfo Next()
         {
+            while (true)
+            {
+                var result = NextFrame();
+                if (result.Valid && result.IsSystem)
+                {
+                    CountSystemFrame(result);
+                    if (!DeliverSystemFrames) continue;
+                    result.Diagnostics = _diagnostics;
+                }
+                return result;
+            }
+        }
+
+        private void CountSystemFrame(FrameMsgInfo frame)
+        {
+            _diagnostics.CntSystemFrames++;
+            if (_lastSysSeqValid && frame.Seq != (byte)((_lastSysSeq + 1) & 0xFF))
+            {
+                _diagnostics.CntSeqGaps++;
+            }
+            _lastSysSeq = frame.Seq;
+            _lastSysSeqValid = true;
+        }
+
+        private FrameMsgInfo Parse(byte[] buffer, int offset, int length)
+        {
+            return SystemFrames.IsSystemStart(_sysConfig, buffer, offset, length)
+                ? SystemFrames.Parse(_sysConfig!, _sysParser!, buffer, offset, length)
+                : _parser.Parse(buffer, offset, length);
+        }
+
+        private FrameMsgInfo NextFrame()
+        {
             if (_state != State.BufferMode)
                 return FrameMsgInfo.Invalid;
 
@@ -179,7 +233,7 @@ namespace StructFrame.Framing
                 }
                 else
                 {
-                    var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
+                    var result = Parse(_internalBuffer, 0, _internalDataLen);
 
                     if (result.Status == FrameMsgStatus.WaitingForStart ||
                         (result.Status == FrameMsgStatus.Collecting &&
@@ -192,10 +246,15 @@ namespace StructFrame.Framing
                         // the buffer full). Scan forward for the next start-byte candidate
                         // and discard everything before it — at least one byte,
                         // guaranteeing forward progress.
+                        if (result.IsSystem && result.Status == FrameMsgStatus.WaitingForStart)
+                        {
+                            _diagnostics.CntSystemRejected++;
+                        }
                         int searchLen = _internalDataLen - 1;
                         int found = (searchLen > 0 && _config.NumStartBytes > 0)
-                            ? Array.IndexOf(_internalBuffer, _config.ComputedStartByte1, 1, searchLen)
+                            ? SystemFrames.FindStart(_config, _sysConfig, _internalBuffer, 1, _internalDataLen)
                             : -1;
+                        if (found >= _internalDataLen) found = -1;
                         // No start bytes (e.g. IPC profile): discard one byte at a time so a
                         // single unknown msg_id doesn't drop the rest of the buffered data.
                         int discard = found > 0 ? found : (_config.NumStartBytes == 0 ? 1 : _internalDataLen);
@@ -217,7 +276,7 @@ namespace StructFrame.Framing
                     {
                         // Frame completed (valid or CRC-failed). Advance _currentOffset past the
                         // bytes in the current buffer that formed the tail of this cross-chunk frame.
-                        if (!result.Valid && _config.HasCrc)
+                        if (!result.Valid && (_config.HasCrc || result.IsSystem))
                         {
                             _diagnostics.CntCrcFailures++;
                             _diagnostics.CntFailedBytes += result.FrameSize;
@@ -248,11 +307,15 @@ namespace StructFrame.Framing
             if (_currentBuffer == null || _currentOffset >= _currentSize)
                 return FrameMsgInfo.Invalid;
 
-            var parseResult = _parser.Parse(_currentBuffer, _currentOffset, _currentSize - _currentOffset);
+            var parseResult = Parse(_currentBuffer, _currentOffset, _currentSize - _currentOffset);
 
             if (parseResult.Status == FrameMsgStatus.WaitingForStart)
             {
                 // Garbage at current offset. Scan forward for the next start-byte candidate.
+                if (parseResult.IsSystem)
+                {
+                    _diagnostics.CntSystemRejected++;
+                }
                 int oldOffset = _currentOffset;
                 int searchFrom = _currentOffset + 1;
                 int searchLen = _currentSize - searchFrom;
@@ -269,7 +332,7 @@ namespace StructFrame.Framing
 
             if (parseResult.FrameSize > 0)
             {
-                if (!parseResult.Valid && _config.HasCrc)
+                if (!parseResult.Valid && (_config.HasCrc || parseResult.IsSystem))
                 {
                     _diagnostics.CntCrcFailures++;
                     _diagnostics.CntFailedBytes += parseResult.FrameSize;
@@ -329,13 +392,14 @@ namespace StructFrame.Framing
         /// </summary>
         private bool ClaimsOversizeFrame(byte[] data, int offset, int length)
         {
-            if (!_config.HasLength || length < _config.HeaderSize) return false;
-            int off = offset + _config.NumStartBytes;
-            if (_config.HasSeq) off++;
-            if (_config.HasSysId) off++;
-            if (_config.HasCompId) off++;
-            int payloadLen = _config.LengthBytes == 1 ? data[off] : data[off] | (data[off + 1] << 8);
-            return _config.Overhead + payloadLen > _bufferSize;
+            var cfg = SystemFrames.IsSystemStart(_sysConfig, data, offset, length) ? _sysConfig! : _config;
+            if (!cfg.HasLength || length < cfg.HeaderSize) return false;
+            int off = offset + cfg.NumStartBytes;
+            if (cfg.HasSeq) off++;
+            if (cfg.HasSysId) off++;
+            if (cfg.HasCompId) off++;
+            int payloadLen = cfg.LengthBytes == 1 ? data[off] : data[off] | (data[off + 1] << 8);
+            return cfg.Overhead + payloadLen > _bufferSize;
         }
 
         /// <summary>
@@ -369,6 +433,18 @@ namespace StructFrame.Framing
         /// Push a single byte for parsing (stream mode).
         /// </summary>
         public FrameMsgInfo PushByte(byte b)
+        {
+            var result = PushByteInner(b);
+            if (result.Valid && result.IsSystem)
+            {
+                CountSystemFrame(result);
+                if (!DeliverSystemFrames) return StatusResult(FrameMsgStatus.WaitingForStart);
+                result.Diagnostics = _diagnostics;
+            }
+            return result;
+        }
+
+        private FrameMsgInfo PushByteInner(byte b)
         {
             if (_state == State.Idle || _state == State.BufferMode)
             {
@@ -411,10 +487,14 @@ namespace StructFrame.Framing
             }
             else
             {
-                if (b == _config.ComputedStartByte1)
+                bool isUser = b == _config.ComputedStartByte1;
+                if (isUser || (_sysConfig != null && b == _sysConfig.ComputedStartByte1))
                 {
                     _internalBuffer[0] = b;
                     _internalDataLen = 1;
+                    // A Basic header shares its first byte with system frames: the second
+                    // byte decides. A Tiny header's only byte decides now.
+                    _cfg = isUser ? _config : _sysConfig!;
 
                     if (_config.NumStartBytes == 1)
                     {
@@ -433,9 +513,10 @@ namespace StructFrame.Framing
 
         private FrameMsgInfo HandleLookingForStart2(byte b)
         {
-            if (b == _config.ComputedStartByte2)
+            if (b == _config.ComputedStartByte2 || (_sysConfig != null && b == _sysConfig.ComputedStartByte2))
             {
                 _internalBuffer[_internalDataLen++] = b;
+                _cfg = b == _config.ComputedStartByte2 ? _config : _sysConfig!;
                 _state = State.CollectingHeader;
             }
             else if (b == _config.ComputedStartByte1)
@@ -466,10 +547,22 @@ namespace StructFrame.Framing
             }
 
             _internalBuffer[_internalDataLen++] = b;
+            var cfg = _cfg;
 
-            if (_internalDataLen >= _config.HeaderSize)
+            if (_internalDataLen >= cfg.HeaderSize)
             {
-                if (!_config.HasLength && !_config.HasCrc)
+                if (cfg != _config && SystemFrames.HeaderCheck(cfg, _internalBuffer, 0, _internalDataLen) != 1)
+                {
+                    // Not a system frame after all: resync without collecting a payload.
+                    _diagnostics.CntSystemRejected++;
+                    _diagnostics.CntSyncRecoveries++;
+                    _diagnostics.CntFailedBytes += _internalDataLen;
+                    _state = State.LookingForStart1;
+                    _internalDataLen = 0;
+                    _cfg = _config;
+                    return StatusResult(FrameMsgStatus.SyncRecovery);
+                }
+                if (!cfg.HasLength && !cfg.HasCrc)
                 {
                     byte msgId = _internalBuffer[_config.HeaderSize - 1];
                     var msgInfo = _getMessageInfo?.Invoke(msgId);
@@ -511,15 +604,15 @@ namespace StructFrame.Framing
                 }
                 else
                 {
-                    int lenOffset = _config.NumStartBytes;
-                    if (_config.HasSeq) lenOffset++;
-                    if (_config.HasSysId) lenOffset++;
-                    if (_config.HasCompId) lenOffset++;
+                    int lenOffset = cfg.NumStartBytes;
+                    if (cfg.HasSeq) lenOffset++;
+                    if (cfg.HasSysId) lenOffset++;
+                    if (cfg.HasCompId) lenOffset++;
 
                     int payloadLen = 0;
-                    if (_config.HasLength)
+                    if (cfg.HasLength)
                     {
-                        if (_config.LengthBytes == 1)
+                        if (cfg.LengthBytes == 1)
                         {
                             payloadLen = _internalBuffer[lenOffset];
                         }
@@ -533,7 +626,7 @@ namespace StructFrame.Framing
                     // range: strictly below BaseSize (can't even fill the non-variable fields)
                     // or strictly above MaxSize. Variable messages legitimately sit anywhere
                     // in [BaseSize, MaxSize], so those must NOT increment the counter.
-                    if (_config.HasLength && _getMessageInfo != null)
+                    if (cfg == _config && _config.HasLength && _getMessageInfo != null)
                     {
                         int fullMsgId = 0;
                         if (_config.HasPkgId)
@@ -551,7 +644,7 @@ namespace StructFrame.Framing
                         }
                     }
 
-                    _expectedFrameSize = _config.Overhead + payloadLen;
+                    _expectedFrameSize = cfg.Overhead + payloadLen;
 
                     if (_expectedFrameSize > _bufferSize)
                     {
@@ -638,13 +731,19 @@ namespace StructFrame.Framing
 
         private FrameMsgInfo ValidateAndReturn()
         {
-            var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
+            var result = Parse(_internalBuffer, 0, _internalDataLen);
 
             _state = State.LookingForStart1;
             _internalDataLen = 0;
             _expectedFrameSize = 0;
+            bool wasSystem = _cfg != _config;
+            _cfg = _config;
 
-            if (result.Valid)
+            if (result.Valid && result.IsSystem)
+            {
+                // sequence gaps of system frames are counted by CountSystemFrame()
+            }
+            else if (result.Valid)
             {
                 if (_config.HasSeq)
                 {
@@ -663,7 +762,7 @@ namespace StructFrame.Framing
             }
             else
             {
-                if (_config.HasCrc)
+                if (_config.HasCrc || wasSystem)
                 {
                     _diagnostics.CntCrcFailures++;
                     result.Status = FrameMsgStatus.CrcFailure;
@@ -692,8 +791,7 @@ namespace StructFrame.Framing
             // No start bytes (e.g. IPC profile): resync one byte at a time so a
             // single unknown msg_id doesn't discard the rest of the buffer.
             if (_config.NumStartBytes == 0) return 0;
-            int found = Array.IndexOf(buf, _config.ComputedStartByte1, start, length);
-            return found >= 0 ? found - start : length;
+            return SystemFrames.FindStart(_config, _sysConfig, buf, start, start + length) - start;
         }
 
         // Record per-frame diagnostics for a complete frame consumed in buffer mode,
@@ -704,6 +802,10 @@ namespace StructFrame.Framing
         private void RecordFrameDiagnostics(byte[]? frame, int frameOffset, bool valid)
         {
             if (frame == null) return;
+            if (SystemFrames.IsSystemStart(_sysConfig, frame, frameOffset, _config.NumStartBytes))
+            {
+                return;  // counted by CountSystemFrame(); the header was already validated
+            }
             if (_config.HasLength && _getMessageInfo != null)
             {
                 int lenOffset = frameOffset + _config.NumStartBytes;

@@ -13,5 +13,7 @@
     <Compile Include="..\..\..\..\src\struct_frame\boilerplate\csharp\Framework\Framing\**\*.cs" />
     <Compile Include="..\..\..\..\src\struct_frame\boilerplate\csharp\Framework\Profiles\**\*.cs" />
     <Compile Include="..\..\..\..\src\struct_frame\boilerplate\csharp\Framework\Types\**\*.cs" />
+    <!-- The built-in system messages (system frames, see Framing/SystemFrames.cs). -->
+    <Compile Include="..\..\..\..\src\struct_frame\boilerplate\csharp\Framework\SfSystem\**\*.cs" />
   </ItemGroup>
 </Project>

@@ -751,16 +751,21 @@ class BufferReader:
         reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer, get_message_info=get_message_info)
     """
     
-    def __init__(self, config: ProfileConfig, buffer: bytes, 
-                 get_message_info: Callable[[int], Optional[MessageInfo]] = None):
+    def __init__(self, config: ProfileConfig, buffer: bytes,
+                 get_message_info: Callable[[int], Optional[MessageInfo]] = None,
+                 deliver_system_frames: bool = False):
         """
         Initialize buffer reader.
-        
+
         Args:
             config: Profile configuration
             buffer: Buffer containing one or more frames
             get_message_info: Callback to get message info (size, magic1, magic2) for a message ID
+            deliver_system_frames: Return system frames (``is_system``) instead of
+                skipping them. Profiles without start bytes never carry them.
         """
+        self._sys_cfg, self._sys_info = _system_profile(config)
+        self._deliver_system = deliver_system_frames
         self._config = config
         self._buffer = buffer
         # memoryview: O(1) zero-copy slicing in next() — a plain bytes slice
@@ -781,8 +786,13 @@ class BufferReader:
             return FrameMsgInfo()
 
         remaining = self._view[self._offset:]
-        
-        if self._config.has_crc or self._config.has_length:
+
+        if _is_system_start(self._sys_cfg, remaining):
+            result = _parse_system(self._sys_cfg, self._sys_info, remaining)
+            if result.valid and not self._deliver_system:
+                self._offset += result.frame_size
+                return self.next()
+        elif self._config.has_crc or self._config.has_length:
             result = _frame_format_parse_with_crc(self._config, remaining, self._get_message_info)
         else:
             if self._get_message_info is None:
@@ -798,8 +808,7 @@ class BufferReader:
             # reporting SyncRecovery so try_next() keeps advancing.
             old_offset = self._offset
             if self._config.num_start_bytes >= 1:
-                start1 = bytes([self._config.computed_start_byte1()])
-                nxt = self._buffer.find(start1, self._offset + 1, self._size)
+                nxt = _find_start(self._buffer, self._config, self._sys_cfg, self._offset + 1, self._size)
                 self._offset = nxt if nxt != -1 else self._size
             else:
                 # No start bytes (e.g. IPC profile): advance one byte and retry so a
@@ -925,6 +934,63 @@ class BufferWriter:
 # AccumulatingReader - Unified parser for buffer and byte-by-byte streaming
 # =============================================================================
 
+def _find_start(buf, config, sys_cfg, begin: int, end: int) -> int:
+    """Index of the next byte in buf[begin:end] that can start a frame of *config* or a
+    system frame, or -1."""
+    start1 = config.computed_start_byte1()
+    nxt = buf.find(bytes([start1]), begin, end)
+    if sys_cfg is not None:
+        sys1 = sys_cfg.computed_start_byte1()
+        if sys1 != start1:
+            alt = buf.find(bytes([sys1]), begin, end)
+            if alt != -1 and (nxt == -1 or alt < nxt):
+                nxt = alt
+    return nxt
+
+
+def _system_profile(config: ProfileConfig):
+    """(system config, system message-info lookup) for a profile whose header can tell
+    system frames apart (Basic, Tiny), else (None, None)."""
+    sf = _SYSTEM_FRAMES
+    if sf is not None and config.header.encodes_payload_type and config.num_start_bytes >= 1:
+        return sf.system_config(config), sf.message_info
+    return None, None
+
+
+def _is_system_start(sys_cfg, data) -> bool:
+    """True when *data* starts with the start bytes of a system frame."""
+    if sys_cfg is None or len(data) < 1 or data[0] != sys_cfg.computed_start_byte1():
+        return False
+    if sys_cfg.num_start_bytes >= 2:
+        return len(data) >= 2 and data[1] == sys_cfg.computed_start_byte2()
+    return True
+
+
+def _system_header_ok(sys_cfg, sys_info, data) -> Optional[bool]:
+    """Check the header of a candidate system frame: True when the system message id
+    is known and the length fits it, False when not, None while the header is incomplete."""
+    hs = sys_cfg.header_size
+    if len(data) < hs:
+        return None
+    off = sys_cfg.num_start_bytes + 3          # after SEQ, SYS, COMP
+    length = data[off] | (data[off + 1] << 8)
+    info = sys_info(data[hs - 1])
+    return info is not None and info.min_size <= length <= info.size
+
+
+def _parse_system(sys_cfg, sys_info, data) -> FrameMsgInfo:
+    """Parse a frame known to start with system start bytes."""
+    ok = _system_header_ok(sys_cfg, sys_info, data)
+    if ok is False:
+        result = FrameMsgInfo(status=FrameMsgStatus.WAITING_FOR_START)
+        result.is_system = True
+        return result
+    result = _frame_format_parse_with_crc(sys_cfg, data, sys_info)
+    result.is_system = True
+    result.variable_encoding = True
+    return result
+
+
 class AccumulatingReaderState(Enum):
     """Parser state for streaming mode"""
     IDLE = 0
@@ -967,16 +1033,20 @@ class AccumulatingReader:
         reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
     """
     
-    def __init__(self, config: ProfileConfig, 
+    def __init__(self, config: ProfileConfig,
                  get_message_info: Callable[[int], Optional[MessageInfo]] = None,
-                 buffer_size: int = 1024):
+                 buffer_size: int = 1024,
+                 deliver_system_frames: bool = False):
         """
         Initialize accumulating reader.
-        
+
         Args:
             config: Profile configuration
             get_message_info: Callback to get message info (size, magic1, magic2) for a message ID
             buffer_size: Size of internal buffer for partial messages (default: 1024)
+            deliver_system_frames: Return system frames (``is_system``) instead of only
+                counting them (``cnt_system_frames``). Profiles without start bytes never
+                carry system frames.
         """
         self._config = config
         self._get_message_info = get_message_info
@@ -1006,6 +1076,17 @@ class AccumulatingReader:
         # Diagnostic counters (stream mode)
         self._diag = ParserDiagnostics()
         self._last_seq: Optional[int] = None  # last seen sequence number
+
+        # System frames (payload type 9) share the profile's header; their sequence
+        # numbers are counted separately from the application frames'.
+        self._deliver_system = deliver_system_frames
+        self._sys_cfg, self._sys_info = _system_profile(config)
+        self._sys_start1 = self._sys_cfg.computed_start_byte1() if self._sys_cfg else None
+        self._sys_start2 = self._sys_cfg.computed_start_byte2() if self._sys_cfg else None
+        self._last_sys_seq: Optional[int] = None
+        # Profile of the frame being collected in stream mode (application or system).
+        self._cfg = config
+        self._info = get_message_info
     
     # =========================================================================
     # Buffer Mode API
@@ -1043,10 +1124,30 @@ class AccumulatingReader:
     def next(self) -> FrameMsgInfo:
         """
         Parse the next frame (buffer mode).
-        
+
         Returns:
             FrameMsgInfo with valid=True if successful, valid=False if no more complete frames.
+            System frames are returned (``is_system``) only when the reader was created
+            with deliver_system_frames=True; otherwise they are counted and skipped.
         """
+        while True:
+            result = self._next_frame()
+            if result.valid and result.is_system:
+                self._count_system_frame(result)
+                if not self._deliver_system:
+                    continue
+            return result
+
+    def _count_system_frame(self, result: FrameMsgInfo) -> None:
+        self._diag.cnt_system_frames += 1
+        if self._last_sys_seq is not None and result.sequence != (self._last_sys_seq + 1) & 0xFF:
+            self._diag.cnt_seq_gaps += 1
+        self._last_sys_seq = result.sequence
+
+    def _find_start(self, buf, begin: int, end: int) -> int:
+        return _find_start(buf, self._config, self._sys_cfg, begin, end)
+
+    def _next_frame(self) -> FrameMsgInfo:
         if self._state != AccumulatingReaderState.BUFFER_MODE:
             return self._with_diag(FrameMsgInfo())
         
@@ -1082,7 +1183,7 @@ class AccumulatingReader:
 
             if result.frame_size > 0:
                 # Complete but invalid frame (CRC failure) — count it, skip it, resync
-                if self._config.has_crc:
+                if self._config.has_crc or result.is_system:
                     self._diag.cnt_crc_failures += 1
                 self._diag.cnt_failed_bytes += result.frame_size
                 self._diag.cnt_sync_recoveries += 1
@@ -1102,9 +1203,10 @@ class AccumulatingReader:
                     or self._internal_data_len >= self._buffer_size
                     or self._claims_oversize_frame(internal_bytes)):
                 discard = self._internal_data_len
+                if result.is_system and result.status == FrameMsgStatus.WAITING_FOR_START:
+                    self._diag.cnt_system_rejected += 1
                 if self._config.num_start_bytes >= 1:
-                    start1 = bytes([self._config.computed_start_byte1()])
-                    nxt = internal_bytes.find(start1, 1)
+                    nxt = self._find_start(internal_bytes, 1, len(internal_bytes))
                     if nxt != -1:
                         discard = nxt
                 else:
@@ -1141,7 +1243,7 @@ class AccumulatingReader:
 
         if result.frame_size > 0:
             # Complete frame with bad CRC — count it, skip it, let caller call next() again
-            if self._config.has_crc:
+            if self._config.has_crc or result.is_system:
                 self._diag.cnt_crc_failures += 1
             self._diag.cnt_failed_bytes += result.frame_size
             self._diag.cnt_sync_recoveries += 1
@@ -1153,9 +1255,10 @@ class AccumulatingReader:
             # Head byte is not a frame start — scan forward to the next start byte,
             # reporting SyncRecovery with frame_size=bytes_skipped so try_next() keeps draining.
             old_offset = self._current_offset
+            if result.is_system:
+                self._diag.cnt_system_rejected += 1
             if self._config.num_start_bytes >= 1:
-                start1 = bytes([self._config.computed_start_byte1()])
-                nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
+                nxt = self._find_start(self._current_buffer, self._current_offset + 1, self._current_size)
                 self._current_offset = nxt if nxt != -1 else self._current_size
             else:
                 # No start bytes (e.g. IPC profile): advance one byte and retry so a
@@ -1174,8 +1277,7 @@ class AccumulatingReader:
         if (self._config.num_start_bytes >= 1
                 and self._claims_oversize_frame(bytes(remaining[:self._config.header_size]))):
             old_offset = self._current_offset
-            start1 = bytes([self._config.computed_start_byte1()])
-            nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
+            nxt = self._find_start(self._current_buffer, self._current_offset + 1, self._current_size)
             self._current_offset = nxt if nxt != -1 else self._current_size
             skipped = self._current_offset - old_offset
             self._diag.cnt_failed_bytes += skipped
@@ -1210,7 +1312,21 @@ class AccumulatingReader:
             FrameMsgInfo with valid=True when a complete valid message is received.
         
         Note: Do not mix push_byte() with add_data() on the same reader instance.
+        System frames are returned only with deliver_system_frames=True.
         """
+        result = self._push_byte(byte)
+        if result.valid and result.is_system:
+            self._count_system_frame(result)
+            if not self._deliver_system:
+                return self._status_result(FrameMsgStatus.WAITING_FOR_START)
+        return result
+
+    def _select_profile(self, system: bool) -> None:
+        """Collect the current stream-mode frame as a system or an application frame."""
+        self._cfg = self._sys_cfg if system else self._config
+        self._info = self._sys_info if system else self._get_message_info
+
+    def _push_byte(self, byte: int) -> FrameMsgInfo:
         # Initialize state on first byte if idle
         if self._state == AccumulatingReaderState.IDLE or self._state == AccumulatingReaderState.BUFFER_MODE:
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
@@ -1242,6 +1358,8 @@ class AccumulatingReader:
         cnt_len_errors when the header length is outside [min_size, size], and
         cnt_seq_gaps on valid frames for profiles that carry a sequence number.
         `frame` is the raw frame bytes (start bytes included)."""
+        if _is_system_start(self._sys_cfg, frame):
+            return  # counted by _count_system_frame; the header was already validated
         config = self._config
         if config.has_length and self._get_message_info is not None:
             len_offset = config.num_start_bytes
@@ -1284,10 +1402,14 @@ class AccumulatingReader:
             else:
                 self._state = AccumulatingReaderState.COLLECTING_HEADER
         else:
-            if byte == self._start_byte1:
+            is_user = byte == self._start_byte1
+            if is_user or (self._sys_start1 is not None and byte == self._sys_start1):
                 self._internal_buffer[0] = byte
                 self._internal_data_len = 1
-                
+                # A Basic header shares its first byte with system frames: the second
+                # byte decides. A Tiny header's only byte decides now.
+                self._select_profile(system=not is_user)
+
                 if self._config.num_start_bytes == 1:
                     self._state = AccumulatingReaderState.COLLECTING_HEADER
                 else:
@@ -1299,9 +1421,10 @@ class AccumulatingReader:
     
     def _handle_looking_for_start2(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START2 state"""
-        if byte == self._start_byte2:
+        if byte == self._start_byte2 or (self._sys_start2 is not None and byte == self._sys_start2):
             self._internal_buffer[self._internal_data_len] = byte
             self._internal_data_len += 1
+            self._select_profile(system=byte != self._start_byte2)
             self._state = AccumulatingReaderState.COLLECTING_HEADER
         elif byte == self._start_byte1:
             # Might be start of new frame - restart
@@ -1329,10 +1452,20 @@ class AccumulatingReader:
         
         self._internal_buffer[self._internal_data_len] = byte
         self._internal_data_len += 1
-        
+        cfg = self._cfg
+
         # Check if we have enough header bytes to determine frame size
-        if self._internal_data_len >= self._config.header_size:
-            if not self._config.has_length and not self._config.has_crc:
+        if self._internal_data_len >= cfg.header_size:
+            if cfg is self._sys_cfg and not _system_header_ok(cfg, self._info, self._internal_buffer[:self._internal_data_len]):
+                # Not a system frame after all: resync without collecting a payload.
+                self._diag.cnt_system_rejected += 1
+                self._diag.cnt_failed_bytes += self._internal_data_len
+                self._diag.cnt_sync_recoveries += 1
+                self._state = AccumulatingReaderState.LOOKING_FOR_START1
+                self._internal_data_len = 0
+                self._select_profile(system=False)
+                return self._status_result(FrameMsgStatus.SYNC_RECOVERY)
+            if not cfg.has_length and not cfg.has_crc:
                 # For minimal profiles, we need the callback to determine length
                 msg_id = self._internal_buffer[self._config.header_size - 1]
                 if self._get_message_info:
@@ -1377,25 +1510,25 @@ class AccumulatingReader:
                     return self._status_result(FrameMsgStatus.SYNC_RECOVERY)
             else:
                 # Calculate payload length from header
-                len_offset = self._config.num_start_bytes
-                
+                len_offset = cfg.num_start_bytes
+
                 # Skip seq, sys_id, comp_id if present
-                if self._config.has_sequence:
+                if cfg.has_sequence:
                     len_offset += 1
-                if self._config.has_system_id:
+                if cfg.has_system_id:
                     len_offset += 1
-                if self._config.has_component_id:
+                if cfg.has_component_id:
                     len_offset += 1
-                
+
                 payload_len = 0
-                if self._config.has_length:
-                    if self._config.length_bytes == 1:
+                if cfg.has_length:
+                    if cfg.length_bytes == 1:
                         payload_len = self._internal_buffer[len_offset]
                     else:
                         payload_len = self._internal_buffer[len_offset] | (self._internal_buffer[len_offset + 1] << 8)
                 
                 # Check for length mismatch against the expected message struct size
-                if self._config.has_length and self._get_message_info is not None:
+                if cfg is self._config and cfg.has_length and self._get_message_info is not None:
                     if self._config.has_package_id:
                         pkg_id = self._internal_buffer[self._config.header_size - 2]
                         low_msg_id = self._internal_buffer[self._config.header_size - 1]
@@ -1412,8 +1545,8 @@ class AccumulatingReader:
                         if payload_len > msg_info.size or payload_len < min_size:
                             self._diag.cnt_len_errors += 1
 
-                self._expected_frame_size = self._config.overhead + payload_len
-                
+                self._expected_frame_size = cfg.overhead + payload_len
+
                 if self._expected_frame_size > self._buffer_size:
                     self._diag.cnt_failed_bytes += self._internal_data_len
                     self._diag.cnt_sync_recoveries += 1
@@ -1500,8 +1633,12 @@ class AccumulatingReader:
         self._state = AccumulatingReaderState.LOOKING_FOR_START1
         self._internal_data_len = 0
         self._expected_frame_size = 0
-        
-        if result.valid:
+        was_system = self._cfg is self._sys_cfg
+        self._select_profile(system=False)
+
+        if result.valid and result.is_system:
+            pass  # sequence gaps counted by _count_system_frame
+        elif result.valid:
             # Check for sequence gap (profiles that carry a sequence number)
             if self._config.has_sequence:
                 if self._last_seq is not None:
@@ -1511,7 +1648,7 @@ class AccumulatingReader:
                 self._last_seq = result.sequence
         else:
             # Invalid frame — count CRC failures and sync recoveries
-            if self._config.has_crc:
+            if self._config.has_crc or was_system:
                 self._diag.cnt_crc_failures += 1
                 result.status = FrameMsgStatus.CRC_FAILURE
             self._diag.cnt_failed_bytes += result.frame_size
@@ -1522,7 +1659,7 @@ class AccumulatingReader:
     def _claims_oversize_frame(self, data) -> bool:
         """True when the header at the start of *data* claims a frame that cannot fit in the
         internal buffer. Only profiles with a length field carry such a claim."""
-        cfg = self._config
+        cfg = self._sys_cfg if _is_system_start(self._sys_cfg, data) else self._config
         if not cfg.has_length or len(data) < cfg.header_size:
             return False
         off = cfg.num_start_bytes
@@ -1537,6 +1674,8 @@ class AccumulatingReader:
 
     def _parse_buffer(self, buffer: bytes) -> FrameMsgInfo:
         """Parse a buffer using the appropriate parser"""
+        if _is_system_start(self._sys_cfg, buffer):
+            return _parse_system(self._sys_cfg, self._sys_info, buffer)
         if self._config.has_crc or self._config.has_length:
             return _frame_format_parse_with_crc(self._config, buffer, self._get_message_info)
         else:
@@ -1594,6 +1733,8 @@ class AccumulatingReader:
             cnt_failed_bytes=self._diag.cnt_failed_bytes,
             cnt_len_errors=self._diag.cnt_len_errors,
             cnt_seq_gaps=self._diag.cnt_seq_gaps,
+            cnt_system_frames=self._diag.cnt_system_frames,
+            cnt_system_rejected=self._diag.cnt_system_rejected,
         )
 
     def reset_diagnostics(self) -> None:
@@ -1611,6 +1752,8 @@ class AccumulatingReader:
         self._current_size = 0
         self._current_offset = 0
         self._last_seq = None
+        self._last_sys_seq = None
+        self._select_profile(system=False)
 
 
 # =============================================================================
@@ -1619,3 +1762,13 @@ class AccumulatingReader:
 
 # Alias for backwards compatibility
 FrameFormatConfig = ProfileConfig
+
+
+# System frames (system_frames.py) build on this module, so it is imported last.
+try:
+    from . import system_frames as _SYSTEM_FRAMES
+except ImportError:  # flat layout (the runtime directory itself is on sys.path)
+    try:
+        import system_frames as _SYSTEM_FRAMES
+    except ImportError:  # pragma: no cover - a runtime copied without system_frames.py
+        _SYSTEM_FRAMES = None

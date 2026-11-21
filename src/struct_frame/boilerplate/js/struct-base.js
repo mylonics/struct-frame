@@ -51,6 +51,49 @@ class MessageBase {
         }
     }
     /**
+     * A new message with every field at its schema default.
+     */
+    static defaults() {
+        return new this();
+    }
+    /**
+     * Set every field back to its schema default.
+     * @returns this message, for chaining
+     */
+    reset() {
+        const defaults = this.constructor._defaultBytes;
+        if (defaults) {
+            Buffer.from(defaults.buffer, defaults.byteOffset, defaults.byteLength).copy(this._buffer);
+        }
+        else {
+            this._buffer.fill(0);
+        }
+        return this;
+    }
+    /**
+     * True when the message (or, with a field name, that one field) encodes exactly
+     * like a message at its schema defaults.
+     * @param field Optional schema field name (camelCase, e.g. "retryMs")
+     */
+    isDefault(field) {
+        const ctor = this.constructor;
+        const encode = (m) => Buffer.from(m.serialize());
+        const fresh = encode(new ctor());
+        if (field === undefined) {
+            return encode(this).equals(fresh);
+        }
+        const props = this.constructor
+            ._fieldProps?.[field];
+        if (!props) {
+            throw new Error(`${ctor.name} has no field '${field}'`);
+        }
+        const probe = new ctor();
+        for (const prop of props) {
+            probe[prop] = this[prop];
+        }
+        return encode(probe).equals(fresh);
+    }
+    /**
      * Get the size of this message in bytes.
      */
     getSize() {

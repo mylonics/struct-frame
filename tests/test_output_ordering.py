@@ -48,25 +48,25 @@ def _assert_same_output(a: dict[str, str], b: dict[str, str], what: str):
         _check(a[name] == b[name], f"{what}: generated file {name} differs")
 
 
-MESSAGES_A = """
-// Counts apples
-message Apple {
-  option msgid = 1;
-  uint8 count = 1;
+MESSAGES_A = """\
+
+/// Counts apples
+message Apple @1 {
+  uint8 count;
 }
 """
-MESSAGES_B = """
-message Banana {
-  option msgid = 2;
-  Apple apple = 1;
-  uint16 ripeness = 2;
+MESSAGES_B = """\
+
+message Banana @2 {
+  Apple apple;
+  uint16 ripeness;
 }
 """
-MESSAGES_C = """
-message Cherry {
-  option msgid = 3;
-  uint32 pits = 1;
-  Banana banana = 2;
+MESSAGES_C = """\
+
+message Cherry @3 {
+  uint32 pits;
+  Banana banana;
 }
 """
 ENUMS = """
@@ -81,8 +81,15 @@ enum Color {
 """
 
 
-def _single(*blocks: str) -> str:
-    return "package order_test;\n" + "".join(blocks)
+def _single(*blocks: str, imports=()) -> str:
+    head = "package order_test;\n" + "".join(f'import "{name}";\n' for name in imports)
+    return head + "".join(blocks)
+
+
+def _with_imports(text: str, *names: str) -> str:
+    """Insert ``import`` statements after the package line of *text*."""
+    first, rest = text.split("\n", 1)
+    return first + "\n" + "".join(f'import "{name}";\n' for name in names) + rest
 
 
 def test_declaration_order_does_not_affect_output():
@@ -104,14 +111,14 @@ def test_file_split_does_not_affect_output():
             "schema.sf": _single(ENUMS, MESSAGES_A, MESSAGES_B, MESSAGES_C)})
         split = _generate_all(Path(t2), "main.sf", {
             "base.sf": _single(MESSAGES_A, ENUMS),
-            "mid.sf": 'import "base.sf";\n' + _single(MESSAGES_B),
-            "main.sf": 'import "mid.sf";\n' + _single(MESSAGES_C),
+            "mid.sf": _single(MESSAGES_B, imports=["base.sf"]),
+            "main.sf": _single(MESSAGES_C, imports=["mid.sf"]),
         })
         split_swapped = _generate_all(Path(t3), "main.sf", {
             "base.sf": _single(ENUMS),
             "apple.sf": _single(MESSAGES_A),
-            "mid.sf": 'import "base.sf";\nimport "apple.sf";\n' + _single(MESSAGES_B),
-            "main.sf": 'import "mid.sf";\n' + _single(MESSAGES_C),
+            "mid.sf": _single(MESSAGES_B, imports=["base.sf", "apple.sf"]),
+            "main.sf": _single(MESSAGES_C, imports=["mid.sf"]),
         })
     _assert_same_output(single, split, "split across files")
     _assert_same_output(split, split_swapped, "different file split")
@@ -119,16 +126,34 @@ def test_file_split_does_not_affect_output():
 
 def test_package_import_order_does_not_affect_output():
     """The order of ``import`` statements does not change per-package output."""
-    common = "package common;\noption pkgid = 1;\nmessage Stamp {\n  option msgid = 1;\n  uint32 t = 1;\n}\n"
-    sensors = "package sensors;\noption pkgid = 2;\nmessage Reading {\n  option msgid = 1;\n  uint32 v = 1;\n}\n"
-    app_body = ("package app;\noption pkgid = 3;\nmessage Report {\n  option msgid = 1;\n"
-                "  common.Stamp stamp = 1;\n  sensors.Reading reading = 2;\n}\n")
+    common = """\
+package common @1;
+
+message Stamp @1 {
+  uint32 t;
+}
+"""
+    sensors = """\
+package sensors @2;
+
+message Reading @1 {
+  uint32 v;
+}
+"""
+    app_body = ("""\
+package app @3;
+
+message Report @1 {
+  common.Stamp stamp;
+  sensors.Reading reading;
+}
+""")
     files = {"common.sf": common, "sensors.sf": sensors}
     with tempfile.TemporaryDirectory() as t1, tempfile.TemporaryDirectory() as t2:
         a = _generate_all(Path(t1), "app.sf", {
-            **files, "app.sf": 'import "common.sf";\nimport "sensors.sf";\n' + app_body})
+            **files, "app.sf": _with_imports(app_body, "common.sf", "sensors.sf")})
         b = _generate_all(Path(t2), "app.sf", {
-            **files, "app.sf": 'import "sensors.sf";\nimport "common.sf";\n' + app_body})
+            **files, "app.sf": _with_imports(app_body, "sensors.sf", "common.sf")})
     _assert_same_output(a, b, "swapped imports")
 
 
@@ -142,7 +167,11 @@ def test_dependencies_precede_dependants_then_name_order():
     with tempfile.TemporaryDirectory() as tmp:
         generated = _generate_all(Path(tmp), "schema.sf", {
             "schema.sf": _single(MESSAGES_C, MESSAGES_B, MESSAGES_A,
-                                 "message Aardvark {\n  option msgid = 9;\n  uint8 x = 1;\n}\n")})
+                                 """\
+message Aardvark @9 {
+  uint8 x;
+}
+""")})
     order = _py_class_order(generated)
     messages = [n for n in order if n in ("Apple", "Banana", "Cherry", "Aardvark")]
     _check(messages == ["Aardvark", "Apple", "Banana", "Cherry"],
@@ -161,15 +190,15 @@ def test_enums_sorted_by_name_entries_keep_declaration_order():
            "Enum entries keep declaration order (not alphabetical)")
 
 
-ONEOF_MESSAGE = """
-message Holder {
-  option msgid = 5;
-  uint8 zeta = 1;
-  uint8 alpha = 2;
+ONEOF_MESSAGE = """\
+
+message Holder @5 {
+  uint8 zeta;
+  uint8 alpha;
   oneof payload {
-    uint8 yankee = 1;
-    uint16 alpha_v = 2;
-    uint32 mike = 3;
+    uint8 yankee;
+    uint16 alpha_v;
+    uint32 mike;
   }
 }
 """

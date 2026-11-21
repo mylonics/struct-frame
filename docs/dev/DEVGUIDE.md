@@ -78,10 +78,10 @@ Functions follow language-specific conventions:
 
 Proto field names are preserved in snake_case across all languages:
 
-```protobuf
-message Example {
-    int32 small_int = 1;
-    uint32 medium_uint = 2;
+```sfbuf
+struct Example {
+  int32 small_int;
+  uint32 medium_uint;
 }
 ```
 

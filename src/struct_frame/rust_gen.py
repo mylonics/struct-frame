@@ -9,6 +9,7 @@ pack/unpack methods for binary compatibility across platforms.
 
 from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, normalize_bytes_type
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
 import os
 import time
 
@@ -496,7 +497,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed nested message array: {var_name}')
-                    lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.size_option}] = [{nested_type}::default(); {field.size_option}];')
+                    lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.size_option}] = core::array::from_fn(|_| {nested_type}::default());')
                     lines.append(f'{indent}for i in 0..{field.size_option} {{')
                     lines.append(f'{indent}    let msg = {nested_type}::unpack(buf.get(_pos.._pos+{nested_type}::SIZE)?)?;')
                     lines.append(f'{indent}    _pos += {nested_type}::SIZE;')
@@ -509,7 +510,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     lines.append(f'{indent}// Bounded nested message array: {var_name}')
                     lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf.get(_pos.._pos+{count_size})?.try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
-                    lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.max_size}] = [{nested_type}::default(); {field.max_size}];')
+                    lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.max_size}] = core::array::from_fn(|_| {nested_type}::default());')
                     lines.append(f'{indent}for i in 0..{loop_limit} {{')
                     lines.append(f'{indent}    let msg = {nested_type}::unpack(buf.get(_pos.._pos+{nested_type}::SIZE)?)?;')
                     lines.append(f'{indent}    _pos += {nested_type}::SIZE;')
@@ -574,7 +575,7 @@ def _get_field_var_names(field):
     """Get variable names introduced by _generate_unpack_field for a field.
     Order must match the declaration order in _generate_unpack_field."""
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.field_type
+    type_name = _normalize_bytes_type(field.field_type)
     names = []
 
     if field.is_array:
@@ -660,19 +661,105 @@ def _rust_scalar_default_literal(field):
         # Both top-level and message-nested Rust enums use SCREAMING_CASE
         # variant names (EnumRustGen, via NamingStyleC.enum_entry).
         return f'{base_type}::{_style_c.enum_entry(field.default)}'
-    if field.field_type == "bool":
-        return "true" if field.default else "false"
-    if field.field_type == "float":
-        return f"{field.default}f32"
-    if field.field_type == "double":
-        return f"{field.default}f64"
-    return f"{field.default}"
+    return _lit.rust_scalar(field.field_type, field.default)
+
+def _rust_bytes_of(value):
+    return value if isinstance(value, (bytes, bytearray)) else value.encode('utf-8')
+
+
+def _rust_is_struct_field(field):
+    return not field.is_default_type and not field.is_enum and field.type_ref is not None
+
+
+def _rust_element_expr(field, value):
+    """Rust expression for one element of *field* holding canonical *value*."""
+    if field.is_enum:
+        return f'{_get_field_type(field)}::{_style_c.enum_entry(value)}'
+    if field.field_type in ("string", "bytes"):
+        capacity = field.element_size if field.is_array else field.size_option
+        padded = _rust_bytes_of(value).ljust(capacity, b"\x00")
+        return '[' + _rust_byte_array_literal(padded) + ']'
+    if field.is_default_type:
+        return _lit.rust_scalar(field.field_type, value)
+    stmts = []
+    for name, sub_value in value.items():
+        stmts.extend(_rust_value_stmts(field.type_ref.fields[name], sub_value, f's.{_escape_rust_field_name(name)}'))
+    return f'{{ let mut s = {_get_field_type(field)}::default(); {" ".join(stmts)} s }}'
+
+
+def _rust_reset_expr(field, capacity):
+    """Expression for an array of *capacity* slots at the element default."""
+    type_name = _normalize_bytes_type(field.field_type)
+    if type_name == "string":
+        return f'[[0u8; {field.element_size}]; {capacity}]'
+    if type_name in rust_types:
+        return f'[{_rust_zero_literal(type_name)}; {capacity}]'
+    return f'core::array::from_fn(|_| {_get_field_type(field)}::default())'
+
+
+def _rust_value_stmts(field, value, lhs):
+    """Statements setting the (already default-initialized) place *lhs* to *value*."""
+    if not field.is_array:
+        if field.field_type in ("string", "bytes") and field.size_option is None:
+            data = _rust_bytes_of(value)
+            padded = _rust_byte_array_literal(data.ljust(field.max_size, b"\x00"))
+            return [f'{lhs}_length = {len(data)};', f'{lhs} = [{padded}];']
+        if _rust_is_struct_field(field):
+            stmts = []
+            for name, sub_value in value.items():
+                stmts.extend(_rust_value_stmts(field.type_ref.fields[name], sub_value,
+                                               f'{lhs}.{_escape_rust_field_name(name)}'))
+            return stmts
+        return [f'{lhs} = {_rust_element_expr(field, value)};']
+    capacity = field.size_option if field.size_option is not None else field.max_size
+    stmts = [f'{lhs} = {_rust_reset_expr(field, capacity)};']
+    if field.size_option is None:
+        stmts.append(f'{lhs}_count = {len(value)};')
+    for index, item in enumerate(value):
+        stmts.append(f'{lhs}[{index}] = {_rust_element_expr(field, item)};')
+    return stmts
+
+
+def _rust_is_composite_default(field):
+    return field.default is not None and (field.is_array or _rust_is_struct_field(field)
+                                          or isinstance(field.default, (bytes, bytearray)))
+
+
+def _rust_default_helpers(msg):
+    """reset() / is_default() / <field>_is_default() (compared by encoding)."""
+    r = '\n    /// Reset every field to its schema default.\n'
+    r += '    pub fn reset(&mut self) { *self = Self::default(); }\n'
+    r += '\n    /// True when this message encodes exactly like one at its schema defaults.\n'
+    r += '    pub fn is_default(&self) -> bool { Self::same_encoding_(self, &Self::default()) }\n'
+    for field in msg.fields.values():
+        var = _escape_rust_field_name(field.name)
+        r += f'\n    /// True when field `{field.name}` holds its schema default.\n'
+        r += f'    pub fn {field.name}_is_default(&self) -> bool {{\n'
+        r += '        let mut probe = Self::default();\n'
+        r += f'        probe.{var} = self.{var}.clone();\n'
+        if field.is_array and field.max_size is not None:
+            r += f'        probe.{field.name}_count = self.{field.name}_count;\n'
+        elif (not field.is_array and _normalize_bytes_type(field.field_type) == "string"
+              and field.max_size is not None):
+            r += f'        probe.{field.name}_length = self.{field.name}_length;\n'
+        r += '        Self::same_encoding_(&probe, &Self::default())\n'
+        r += '    }\n'
+    r += '\n    fn same_encoding_(a: &Self, b: &Self) -> bool {\n'
+    r += '        let mut x = [0u8; Self::SIZE + 1];\n'
+    r += '        let mut y = [0u8; Self::SIZE + 1];\n'
+    r += '        let nx = a.pack(&mut x);\n'
+    r += '        let ny = b.pack(&mut y);\n'
+    r += '        x[..nx] == y[..ny]\n'
+    r += '    }\n'
+    return r
+
 
 def _generate_default_impl(msg, struct_name):
     """Generate manual Default implementation for structs with large arrays."""
+    composite = [f for f in msg.fields.values() if _rust_is_composite_default(f)]
     result = f'impl Default for {struct_name} {{\n'
     result += '    fn default() -> Self {\n'
-    result += '        Self {\n'
+    result += '        let mut v = Self {\n' if composite else '        Self {\n'
     for field in msg.fields.values():
         var_name = _escape_rust_field_name(field.name)
         type_name = _normalize_bytes_type(field.field_type)
@@ -699,7 +786,7 @@ def _generate_default_impl(msg, struct_name):
                     nested_type = _get_field_type(field)
                     result += f'            {var_name}: core::array::from_fn(|_| {nested_type}::default()),\n'
         elif type_name == "string":
-            default_text = field.default.encode('utf-8') if field.default is not None else b""
+            default_text = _rust_bytes_of(field.default) if field.default is not None else b""
             if field.size_option is not None:
                 if default_text:
                     padded = _rust_byte_array_literal(default_text.ljust(field.size_option, b"\x00"))
@@ -716,7 +803,7 @@ def _generate_default_impl(msg, struct_name):
                     result += f'            {var_name}: [0u8; {field.max_size}],\n'
             else:
                 result += f'            {var_name}: Default::default(),\n'
-        elif field.default is not None:
+        elif field.default is not None and not _rust_is_struct_field(field):
             result += f'            {var_name}: {_rust_scalar_default_literal(field)},\n'
         else:
             result += f'            {var_name}: Default::default(),\n'
@@ -724,7 +811,14 @@ def _generate_default_impl(msg, struct_name):
         if oneof.auto_discriminator:
             result += f'            {oneof_name}_discriminator: 0,\n'
         result += f'            {oneof_name}_bytes: [0u8; {oneof.size}],\n'
-    result += '        }\n'
+    if composite:
+        result += '        };\n'
+        for field in composite:
+            for stmt in _rust_value_stmts(field, field.default, f'v.{_escape_rust_field_name(field.name)}'):
+                result += f'        {stmt}\n'
+        result += '        v\n'
+    else:
+        result += '        }\n'
     result += '    }\n'
     result += '}\n\n'
     return result
@@ -1189,6 +1283,7 @@ class MessageRustGen():
             else:
                 result += f'        crate::frame_base::MessageInfo::new_with_base_size(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2, Self::BASE_SIZE)\n'
             result += '    }\n'
+            result += _rust_default_helpers(msg)
 
         result += '}\n\n'
 
@@ -1261,6 +1356,16 @@ class FileRustGen():
         file_docs = format_file_docs(package, '// ')
         if file_docs:
             result.append(file_docs)
+
+        consts = _lit.package_consts(package)
+        if consts:
+            result.append('// Constants\n')
+            for const in consts:
+                for line in _lit.doc_lines(const.comments):
+                    result.append(f'/// {line}'.rstrip() + '\n')
+                result.append(f'pub const {_lit.const_name(const)}: {_lit.rust_type(const.const_type)} = '
+                              f'{_lit.rust_scalar(const.const_type, const.value)};\n')
+            result.append('\n')
 
         # Generate enums
         if package.enums:
@@ -1340,7 +1445,10 @@ path = "lib.rs"
         result += 'pub mod frame_headers;\n'
         result += 'pub mod payload_types;\n'
         result += 'pub mod frame_profiles;\n'
-        result += 'pub mod struct_frame_sdk;\n\n'
+        result += 'pub mod struct_frame_sdk;\n'
+        result += '// System frames (payload type 9) and the built-in sf_system messages\n'
+        result += 'pub mod system_frames;\n'
+        result += 'pub mod sf_system;\n\n'
         result += '// Re-export main SDK items at the crate root for backward compatibility.\n'
         result += '// Prefer `use your_crate::prelude::*;` in new code.\n'
         result += 'pub use frame_base::{\n'

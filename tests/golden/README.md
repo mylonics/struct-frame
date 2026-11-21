@@ -15,6 +15,9 @@ project's wire-format regression suite — equivalent to a Protocol Buffers
 | `extended_bulk.bin` | `tests/py/test_extended.py` | `bulk` |
 | `extended_network.bin` | `tests/py/test_extended.py` | `network` |
 | `variable_bulk.bin` | `tests/py/test_variable_flag.py` | `bulk` |
+| `system_basic.bin` | `tests/test_system_frames.py` (conformance § 9.3 vectors) | Basic header |
+| `system_tiny.bin` | `tests/test_system_frames.py` (conformance § 9.3 vectors) | Tiny header |
+| `mixed_network_system.bin` | `tests/fuzz/corpus.py` `system_stream` | `network` |
 
 ## How they are used
 

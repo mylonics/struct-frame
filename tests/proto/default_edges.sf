@@ -1,0 +1,70 @@
+/// Default values that need care in some language: non-finite and negative-zero floats,
+/// extreme integers, escaped and non-ASCII strings, raw bytes, arrays (partial, full,
+/// vectors, enums, strings, structs) and struct values (partial, nested).
+
+package default_edges @12;
+
+enum Color {
+  RED = 0;
+  GREEN = 1;
+  BLUE = 2;
+}
+
+struct Point {
+  f32 x = 1.5;
+  f32 y;
+  Color c = GREEN;
+}
+
+struct Box {
+  Point lo;
+  Point hi = { x: 10, y: 20 };
+  fixed_string<4> tag = "box";
+}
+
+message Edges @1 {
+  f32 pinf = inf;
+  f64 ninf = -inf;
+  f64 qnan = nan;
+  f64 negzero = -0.0;
+  i64 imin = -9223372036854775808;
+  i64 imax = 9223372036854775807;
+  u64 umax = 0xFFFF_FFFF_FFFF_FFFF;
+  i32 i32min = -2147483648;
+  u32 u32max = 4294967295;
+  i8 i8min = -128;
+  f32 rounding = 0.1;
+  string<16> esc = "a\"b\\c\td\n";
+  fixed_string<8> utf = "été";
+  bytes<8> raw = [0x00, 0xFF, 0x7F];
+  fixed_bytes<4> rawf = [1, 2];
+  string<4> empty = "";
+  array<u8, 4> fixed_partial = [1, 2, 3];
+  array<i16, 2> fixed_full = [-1, 2];
+  vector<u16, 5> vec3 = [100, 200, 300];
+  vector<f32, 3> vecf = [0.5, -inf];
+  array<Color, 3> colors = [BLUE, RED];
+  vector<Color, 4> vcolors = [GREEN];
+  array<fixed_string<4>, 2> names = ["ab", "cdef"];
+  vector<fixed_string<3>, 3> vnames = ["x"];
+  array<bool, 2> flags = [true];
+  Point p = { y: 2.5 };
+  Point p_plain;
+  Box box = { lo: { x: 3 }, tag: "bx" };
+  array<Point, 2> pts = [{ x: 7 }];
+  vector<Point, 3> vpts = [{ y: 9 }, { c: BLUE }];
+  array<Point, 2> pts_plain;
+}
+
+message VarEdges @2 [variable] {
+  u8 head = 7;
+  vector<u16, 5> vec = [1, 2];
+  string<8> s = "hi";
+  Point p = { x: 2 };
+  vector<Point, 2> vpts = [{ y: 3 }];
+}
+
+message Plain @3 {
+  u8 a;
+  array<u16, 2> b;
+}

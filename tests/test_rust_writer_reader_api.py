@@ -20,22 +20,32 @@ import pytest
 
 from test_utils import run_generator
 
-MAIN_SF = """package tw;
-option pkgid = 0;
+MAIN_SF = """\
+package tw @0;
+
 import "twp.sf";
-message Fixed { option msgid = 1; uint16 a = 1; float b = 2; }
-message Ext {
-  option msgid = 3;
-  uint8 a = 1;
-  uint8 c = 2;
-  option extensions_start = 3;
-  uint32 b = 3;
+
+message Fixed @1 {
+  uint16 a;
+  float b;
+}
+
+message Ext @3 {
+  uint8 a;
+  uint8 c;
+
+  extensions {
+    uint32 b;
+  }
 }
 """
 
-PKG_SF = """package twp;
-option pkgid = 5;
-message P { option msgid = 7; uint32 x = 1; }
+PKG_SF = """\
+package twp @5;
+
+message P @7 {
+  uint32 x;
+}
 """
 
 RUST_MAIN = r"""

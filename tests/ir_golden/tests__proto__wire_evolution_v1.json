@@ -1,0 +1,876 @@
+{
+ "ir": {
+  "documentation_hash": "31dbb102c4870fa3b4c54bd19b2a032958de62cf4dad53e4aa1b568ed0565058",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {},
+    "file_docs": {
+     "wire_evolution_v1.sf": [
+      "// Wire-evolution interop fixture \u2014 *version 1* (base schema, no extensions).",
+      "//",
+      "// This is the \"older\" half of a paired schema set used to test genuine",
+      "// cross-version extension interop.  It is generated into its own package",
+      "// (`wire_evolution_v1`) so that the v1 side is truly unaware of the extra",
+      "// extension fields/variants that the v2 schema adds.",
+      "//",
+      "// v1 defines only the BASE fields/variants of each message.  It deliberately",
+      "// does NOT declare `option extensions_start` or any extension fields, exactly",
+      "// as an older code-base predating the extension additions would look.",
+      "//",
+      "// The message ids, base field layout, and base oneof variants are identical to",
+      "// `wire_evolution_v2.sf` so that:",
+      "//   \u2022 magic bytes (computed from base fields only) match between versions, and",
+      "//   \u2022 a v1 receiver can validate and decode the base portion of a v2 frame.",
+      "//"
+     ]
+    },
+    "messages": {
+     "BaseCommandA": {
+      "_class": "Message",
+      "base_size": 6,
+      "comments": [
+       "// ============================================================================",
+       "// Shared sub-message types used inside oneofs (base variants only)",
+       "// ============================================================================"
+      ],
+      "default_bytes": {
+       "hex": "000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "flags_a": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "flags_a",
+        "number": 2,
+        "package": "wire_evolution_v1",
+        "size": 2,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value_a": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value_a",
+        "number": 1,
+        "package": "wire_evolution_v1",
+        "size": 4,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Shared sub-message types used inside oneofs (base variants only)",
+       "// ============================================================================"
+      ],
+      "magic_bytes": [
+       11,
+       17
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "BaseCommandA",
+      "oneofs": {},
+      "package": "wire_evolution_v1",
+      "size": 6,
+      "source_file": "wire_evolution_v1.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "BaseCommandB": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "active_b": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "active_b",
+        "number": 2,
+        "package": "wire_evolution_v1",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value_b": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value_b",
+        "number": 1,
+        "package": "wire_evolution_v1",
+        "size": 2,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       14,
+       19
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "BaseCommandB",
+      "oneofs": {},
+      "package": "wire_evolution_v1",
+      "size": 3,
+      "source_file": "wire_evolution_v1.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "BaseExtensionMessage": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 1 \u2014 standard message, base fields only (no crc_seed extension)",
+       "// ============================================================================"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "header": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "wire_evolution_v1",
+        "size": 2,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "seq": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "seq",
+        "number": 2,
+        "package": "wire_evolution_v1",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 1 \u2014 standard message, base fields only (no crc_seed extension)",
+       "// ============================================================================"
+      ],
+      "magic_bytes": [
+       7,
+       11
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "BaseExtensionMessage",
+      "oneofs": {},
+      "package": "wire_evolution_v1",
+      "size": 3,
+      "source_file": "wire_evolution_v1.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "MultiOneOfExtensionMessage": {
+      "_class": "Message",
+      "base_size": 15,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 4 \u2014 two oneofs, base variants only in both",
+       "// ============================================================================"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "priority": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "priority",
+        "number": 1,
+        "package": "wire_evolution_v1",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 4,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 4 \u2014 two oneofs, base variants only in both",
+       "// ============================================================================"
+      ],
+      "magic_bytes": [
+       125,
+       252
+      ],
+      "magic_bytes_override": null,
+      "min_size": 15,
+      "name": "MultiOneOfExtensionMessage",
+      "oneofs": {
+       "base_union": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "first_a",
+         "first_b"
+        ],
+        "fields": {
+         "first_a": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "first_a",
+          "number": 1,
+          "package": "wire_evolution_v1",
+          "size": 6,
+          "size_option": null,
+          "source_file": "wire_evolution_v1.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution_v1",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandA",
+           "package": "wire_evolution_v1",
+           "ref": "message"
+          }
+         },
+         "first_b": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "first_b",
+          "number": 2,
+          "package": "wire_evolution_v1",
+          "size": 3,
+          "size_option": null,
+          "source_file": "wire_evolution_v1.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution_v1",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandB",
+           "package": "wire_evolution_v1",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "base_union",
+        "package": "wire_evolution_v1",
+        "size": 6,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "first_a",
+          6
+         ],
+         [
+          2,
+          "first_b",
+          3
+         ]
+        ]
+       },
+       "ext_union": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "second_a"
+        ],
+        "fields": {
+         "second_a": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "second_a",
+          "number": 1,
+          "package": "wire_evolution_v1",
+          "size": 6,
+          "size_option": null,
+          "source_file": "wire_evolution_v1.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution_v1",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandA",
+           "package": "wire_evolution_v1",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "ext_union",
+        "package": "wire_evolution_v1",
+        "size": 6,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "second_a",
+          6
+         ]
+        ]
+       }
+      },
+      "package": "wire_evolution_v1",
+      "size": 15,
+      "source_file": "wire_evolution_v1.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "OneOfExtensionMessage": {
+      "_class": "Message",
+      "base_size": 8,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 3 \u2014 single oneof, base variants only (no ext variants)",
+       "// ============================================================================"
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "device_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "device_id",
+        "number": 1,
+        "package": "wire_evolution_v1",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 3,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 3 \u2014 single oneof, base variants only (no ext variants)",
+       "// ============================================================================"
+      ],
+      "magic_bytes": [
+       254,
+       127
+      ],
+      "magic_bytes_override": null,
+      "min_size": 8,
+      "name": "OneOfExtensionMessage",
+      "oneofs": {
+       "command": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "cmd_a",
+         "cmd_b"
+        ],
+        "fields": {
+         "cmd_a": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "cmd_a",
+          "number": 1,
+          "package": "wire_evolution_v1",
+          "size": 6,
+          "size_option": null,
+          "source_file": "wire_evolution_v1.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution_v1",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandA",
+           "package": "wire_evolution_v1",
+           "ref": "message"
+          }
+         },
+         "cmd_b": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BaseCommandB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "cmd_b",
+          "number": 2,
+          "package": "wire_evolution_v1",
+          "size": 3,
+          "size_option": null,
+          "source_file": "wire_evolution_v1.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "wire_evolution_v1",
+          "type_ref": {
+           "message": null,
+           "name": "BaseCommandB",
+           "package": "wire_evolution_v1",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "command",
+        "package": "wire_evolution_v1",
+        "size": 6,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "cmd_a",
+          6
+         ],
+         [
+          2,
+          "cmd_b",
+          3
+         ]
+        ]
+       }
+      },
+      "package": "wire_evolution_v1",
+      "size": 8,
+      "source_file": "wire_evolution_v1.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "VariableExtensionMessage": {
+      "_class": "Message",
+      "base_size": 34,
+      "comments": [
+       "// ============================================================================",
+       "// Scenario 2 \u2014 variable-length message, base fields only (no ext_timestamp)",
+       "// ============================================================================"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "node_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "node_id",
+        "number": 1,
+        "package": "wire_evolution_v1",
+        "size": 1,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "readings": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 16,
+        "name": "readings",
+        "number": 2,
+        "package": "wire_evolution_v1",
+        "size": 33,
+        "size_option": null,
+        "source_file": "wire_evolution_v1.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Scenario 2 \u2014 variable-length message, base fields only (no ext_timestamp)",
+       "// ============================================================================"
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 2,
+      "name": "VariableExtensionMessage",
+      "oneofs": {},
+      "package": "wire_evolution_v1",
+      "size": 34,
+      "source_file": "wire_evolution_v1.sf",
+      "trailing_comments": [],
+      "variable": true
+     }
+    },
+    "name": "wire_evolution_v1",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "38babfba344079d3a7ff0b36edd0070d276fbcbcca3f24646103fd1a3d155a04"
+ },
+ "outputs": {
+  "c/structframe_all.h": "c165522b3ab7333eefc1ae1e243166a3f65591797a999cf5cb6e8d0c6325a2eb",
+  "c/test_roundtrip_wire_evolution_v1.c": "d552c3ca2082c52465950501299b64235e9a99ae0dbf94a70c1fdd3dc2a4ed7c",
+  "c/wire_evolution_v1.structframe.h": "62824f6ba77ba340f6f076f39be5ead845b98fe09af6e3e5c9acef830bbe48ff",
+  "c/wire_evolution_v1.tests.h": "91a3ebfe6bb9a05ee98b51a5b5963602fb8d4ff94f89c79f50d71f0afaeae3aa",
+  "cpp/structframe_all.hpp": "3f8ba67c808ca3a3aebc8c3103b7a2302c83056473164410d5ce81e67a599beb",
+  "cpp/test_roundtrip_wire_evolution_v1.cpp": "63fff3ec19de91978a0722bd1661d8b1c70ec8f0e1b759b9092c97a3920dc2dc",
+  "cpp/wire_evolution_v1.structframe.hpp": "061f648441cc9c3c866f008b7ceb84de98a3bb108d5346e896fb826f68c9f73c",
+  "cpp/wire_evolution_v1.tests.hpp": "5f933b465a8634932ed9e537536e5d21d2c865c208afa31bfeefded32a2cfa87",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "csharp/WireEvolutionV1/Constants.cs": "b79b4c2ca501563b8232fa916f0b4d68b8ff8ac7a5dad0bd0bdb9a7f954ec562",
+  "csharp/WireEvolutionV1/Enums/MultiOneOfExtensionMessageBaseUnionField.cs": "ffcc53c688c7f43c5d620ab4d50b6ed0c04398f5b0436aa2116b3313d3d5e83a",
+  "csharp/WireEvolutionV1/Enums/MultiOneOfExtensionMessageExtUnionField.cs": "195b23d21cc5b41fa42b0b725a28f7958058971449d3a1eed1ab499751680942",
+  "csharp/WireEvolutionV1/Enums/OneOfExtensionMessageCommandField.cs": "694b6619d977a347cb9948d5ccc91e61931b119d911819e70d943bdc63195dfb",
+  "csharp/WireEvolutionV1/MessageDefinitions.cs": "b4af6a0b22bda8d1f80749d611762ce6e0b13d3c5d10058177b8c88a15769c86",
+  "csharp/WireEvolutionV1/Messages/BaseCommandA.cs": "b6cd912eb58b6ead78d410c24bc128dcc491b1a1209a8988055a498e9c563c18",
+  "csharp/WireEvolutionV1/Messages/BaseCommandB.cs": "0dd590dd216e7b64cff07642636b72f00cc46e7fbe0c451943d8bded251bb7e9",
+  "csharp/WireEvolutionV1/Messages/BaseExtensionMessage.cs": "11c914e1226446488e229b79deaf3ecf011eb619ad5ebc9ac2c4e66614473d45",
+  "csharp/WireEvolutionV1/Messages/MultiOneOfExtensionMessage.cs": "1cbd8ad7ebb9b57b9e1c0760ed9d0a70712df19856da10b65a8ca1260aef2610",
+  "csharp/WireEvolutionV1/Messages/OneOfExtensionMessage.cs": "51b34e147090afaea7428688c49fab0cedca5233c429fc6043a47fe169adac9e",
+  "csharp/WireEvolutionV1/Messages/VariableExtensionMessage.cs": "c20811cf1f04c5079bc39ee908a0e0944d5aa41a003b2489587f4cfc9a4b03c6",
+  "csharp/WireEvolutionV1/SdkInterface.cs": "f13a3bd0da5dcfa038de789edf0dc67f569ac9c8d6184337f807b0cb20995ec2",
+  "csharp/WireEvolutionV1/test_roundtrip_wire_evolution_v1.cs": "3136445c671936e89e415f5d125e57680bbf0241afb886efa2c232e186906c82",
+  "gql/schema.graphql": "c208c290d0f6f0d8c58838e47b77f5d4493090d67a9734f39e1d993df0fff331",
+  "gql/wire_evolution_v1.graphql": "cc3f1a3779d05b2ee021123353a4e44b47ad2de6421d61fedd68a2604827ce88",
+  "js/test_roundtrip_wire_evolution_v1.js": "1e51645204db895ea584fcb55a4ab20400834cefd2fef3c866298d6441c24954",
+  "js/wire-evolution-v1.structframe.js": "365862a351ba93cfdd26ffeccd75c6b700e651c192f077e9b78ab86cbd0b4727",
+  "py/structframe/wire_evolution_v1.py": "cc1e30821860f296d0d93beaa0618b3a6410123094d01c9dbd87010f046b10fc",
+  "py/structframe/wire_evolution_v1_tests.py": "a5734344dbf28f8e767aa77a9ca87e79bd76ce1c454425e7c424ad2f2a4dcf36",
+  "py/test_roundtrip_wire_evolution_v1.py": "cd6262d745f4687181435f4270e48cb642c8449b5c55ce975081b01d1c52bc46",
+  "rust/Cargo.toml": "726ec527f06bebba399aeb1fc13faf68af5ed726fede5e940b28539fecd6a2b7",
+  "rust/test_roundtrip_wire_evolution_v1.rs": "fd8ae1d56f2985c4fabd94066c5d576400827250c2cea3a4065ed84c9a740f93",
+  "rust/wire_evolution_v1.structframe.rs": "8176b983ca0c66793ea563195f5752a3f32f8a6dd9fb1d1e4cd1df75de3f7c29",
+  "sf_compile.json": "7514aa649533718ef5cf969a4905ef71a83406e744e1dde73e4d0f6a59e12456",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_wire_evolution_v1.ts": "796863fbb809bcda2efd53fdc867af559194e183e0ee1be2b37c5119a431f7e4",
+  "ts/wire-evolution-v1.structframe.ts": "e8f35b36b00c05c052bcd2c35fc2b771f80a795bf1b6688f57822426e527eb01"
+ },
+ "outputs_no_packed": {
+  "c/structframe_all.h": "c165522b3ab7333eefc1ae1e243166a3f65591797a999cf5cb6e8d0c6325a2eb",
+  "c/test_roundtrip_wire_evolution_v1.c": "d552c3ca2082c52465950501299b64235e9a99ae0dbf94a70c1fdd3dc2a4ed7c",
+  "c/wire_evolution_v1.structframe.h": "34d706e5d7516824784e7f2f9a487b23784aa53f61e7bab508ff069dccade3bf",
+  "c/wire_evolution_v1.tests.h": "91a3ebfe6bb9a05ee98b51a5b5963602fb8d4ff94f89c79f50d71f0afaeae3aa",
+  "cpp/structframe_all.hpp": "3f8ba67c808ca3a3aebc8c3103b7a2302c83056473164410d5ce81e67a599beb",
+  "cpp/test_roundtrip_wire_evolution_v1.cpp": "63fff3ec19de91978a0722bd1661d8b1c70ec8f0e1b759b9092c97a3920dc2dc",
+  "cpp/wire_evolution_v1.structframe.hpp": "03cd5069bd9adcd413855cc2a3a1a6aa4cdea01578cca9020ceacc2b30b019ab",
+  "cpp/wire_evolution_v1.tests.hpp": "5f933b465a8634932ed9e537536e5d21d2c865c208afa31bfeefded32a2cfa87",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "csharp/WireEvolutionV1/Constants.cs": "d6bbdb605aabca023ed674c0dbe3fc46987cf018368026139d9fb65f595c9223",
+  "csharp/WireEvolutionV1/Enums/MultiOneOfExtensionMessageBaseUnionField.cs": "ffcc53c688c7f43c5d620ab4d50b6ed0c04398f5b0436aa2116b3313d3d5e83a",
+  "csharp/WireEvolutionV1/Enums/MultiOneOfExtensionMessageExtUnionField.cs": "195b23d21cc5b41fa42b0b725a28f7958058971449d3a1eed1ab499751680942",
+  "csharp/WireEvolutionV1/Enums/OneOfExtensionMessageCommandField.cs": "694b6619d977a347cb9948d5ccc91e61931b119d911819e70d943bdc63195dfb",
+  "csharp/WireEvolutionV1/MessageDefinitions.cs": "e8641e89d6d35d23b03084d486ad2628cf4f20139878da838db71c76f1ae0dc1",
+  "csharp/WireEvolutionV1/Messages/BaseCommandA.cs": "b3888f8d9a53a4961d9a195eccf41e36b84a14c9d2cb7728564963006d9ff76e",
+  "csharp/WireEvolutionV1/Messages/BaseCommandB.cs": "75e9446ed22b9a83cac6248d36fd566ae51ef3b07cccf9d2fa680cf82bf5d61c",
+  "csharp/WireEvolutionV1/Messages/BaseExtensionMessage.cs": "411c8242acfbc2a888caac662340760ca5259fa90798b6b2f54851f89501d2e1",
+  "csharp/WireEvolutionV1/Messages/MultiOneOfExtensionMessage.cs": "c7d6166e49e6b77017d164810ccbb34c72d41bf9273f6fe46262e5a84d224ae5",
+  "csharp/WireEvolutionV1/Messages/OneOfExtensionMessage.cs": "28717b8428111b28d99de2dcb4c7b890ec3e79cca618c363346dee4f4a9ea722",
+  "csharp/WireEvolutionV1/Messages/VariableExtensionMessage.cs": "c20811cf1f04c5079bc39ee908a0e0944d5aa41a003b2489587f4cfc9a4b03c6",
+  "csharp/WireEvolutionV1/SdkInterface.cs": "f13a3bd0da5dcfa038de789edf0dc67f569ac9c8d6184337f807b0cb20995ec2",
+  "csharp/WireEvolutionV1/test_roundtrip_wire_evolution_v1.cs": "3136445c671936e89e415f5d125e57680bbf0241afb886efa2c232e186906c82",
+  "gql/schema.graphql": "c208c290d0f6f0d8c58838e47b77f5d4493090d67a9734f39e1d993df0fff331",
+  "gql/wire_evolution_v1.graphql": "cc3f1a3779d05b2ee021123353a4e44b47ad2de6421d61fedd68a2604827ce88",
+  "js/test_roundtrip_wire_evolution_v1.js": "1e51645204db895ea584fcb55a4ab20400834cefd2fef3c866298d6441c24954",
+  "js/wire-evolution-v1.structframe.js": "e2883d4a68eef193806f14b85063510886be6af2373276b6b1eed8f08b2367f0",
+  "py/structframe/wire_evolution_v1.py": "8f81fa7affb691247af7e19f4cab65513702e87e49c12cbb07b894c5f31de252",
+  "py/structframe/wire_evolution_v1_tests.py": "a5734344dbf28f8e767aa77a9ca87e79bd76ce1c454425e7c424ad2f2a4dcf36",
+  "py/test_roundtrip_wire_evolution_v1.py": "cd6262d745f4687181435f4270e48cb642c8449b5c55ce975081b01d1c52bc46",
+  "rust/Cargo.toml": "726ec527f06bebba399aeb1fc13faf68af5ed726fede5e940b28539fecd6a2b7",
+  "rust/test_roundtrip_wire_evolution_v1.rs": "fd8ae1d56f2985c4fabd94066c5d576400827250c2cea3a4065ed84c9a740f93",
+  "rust/wire_evolution_v1.structframe.rs": "b0dc1334fa3167209dfecd611169232d67b748822d303dae6bb38bba5cc2cb7f",
+  "sf_compile.json": "077b82d85eeefeb7c6ad0cf8e7eef59e3964d96ca2c96b54dfe78b260842d75f",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_wire_evolution_v1.ts": "796863fbb809bcda2efd53fdc867af559194e183e0ee1be2b37c5119a431f7e4",
+  "ts/wire-evolution-v1.structframe.ts": "5e151e48dc43f9c382549c4ec80e6b2d56c5e1318a974126d9cb21b365576460"
+ },
+ "schema": "tests/proto/wire_evolution_v1.sf"
+}

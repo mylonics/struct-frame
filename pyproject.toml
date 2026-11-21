@@ -9,7 +9,6 @@ authors = [
   { name="Rijesh Augustine", email="rijesh@mylonics.com" },
 ]
 dependencies = [
-    "proto-schema-parser>=2.0.0",
     # structframe.toml support (tomllib is in the standard library from Python 3.11)
     "tomli>=1.1.0; python_version < '3.11'",
 ]
@@ -45,8 +44,11 @@ serial = ["pyserial"]
 # WebSocketTransport uses websocket-client; AsyncWebSocketTransport uses websockets.
 websocket = ["websocket-client", "websockets"]
 sdk = ["pyserial", "websocket-client", "websockets"]
+# `struct-frame migrate` reads the old proto-style schema syntax with proto-schema-parser.
+migrate = ["proto-schema-parser>=2.0.0"]
 # Everything the test suite uses beyond the generator itself.
-test = ["pytest", "hypothesis", "graphql-core", "pyserial", "websocket-client", "websockets"]
+test = ["pytest", "hypothesis", "graphql-core", "pyserial", "websocket-client", "websockets",
+        "proto-schema-parser>=2.0.0"]
 
 [project.scripts]
 struct-frame = "struct_frame:main"

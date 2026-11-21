@@ -19,16 +19,26 @@ import pytest
 
 from test_utils import REPO_ROOT, run_generator
 
-MAIN_SF = """package two;
-option pkgid = 3;
+MAIN_SF = """\
+package two @3;
+
 import "one.sf";
-message T { option msgid = 1; uint8 v = 1; }
+
+message T @1 {
+  uint8 v;
+}
 """
 
-ONE_SF = """package one;
-option pkgid = 4;
-message A { option msgid = 1; uint32 target = 1; }
-message B { option msgid = 2; option variable = true; string s = 1 [max_size=8]; }
+ONE_SF = """\
+package one @4;
+
+message A @1 {
+  uint32 target;
+}
+
+message B @2 [variable] {
+  string<8> s;
+}
 """
 
 

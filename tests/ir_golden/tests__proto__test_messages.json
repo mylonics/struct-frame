@@ -1,0 +1,5111 @@
+{
+ "ir": {
+  "documentation_hash": "ca5c583acdeb68ecc4bd5f2a6cb1b2460676879dc256b3f44854804ffd3896a1",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "MsgSeverity": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "SEV_DEBUG": [
+        4,
+        []
+       ],
+       "SEV_ERROR": [
+        1,
+        []
+       ],
+       "SEV_INFO": [
+        3,
+        []
+       ],
+       "SEV_MSG": [
+        0,
+        []
+       ],
+       "SEV_WARN": [
+        2,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "SEV_DEBUG": [],
+       "SEV_ERROR": [],
+       "SEV_INFO": [],
+       "SEV_MSG": [],
+       "SEV_WARN": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "MsgSeverity",
+      "package": "serialization_test",
+      "size": 1,
+      "source_file": "test_messages.sf",
+      "trailing_comments": []
+     },
+     "Priority": {
+      "_class": "Enum",
+      "comments": [
+       "// ============================================================================",
+       "// Enums",
+       "// ============================================================================"
+      ],
+      "data": {
+       "CRITICAL": [
+        3,
+        []
+       ],
+       "HIGH": [
+        2,
+        []
+       ],
+       "LOW": [
+        0,
+        []
+       ],
+       "MEDIUM": [
+        1,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "CRITICAL": [],
+       "HIGH": [],
+       "LOW": [],
+       "MEDIUM": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Enums",
+       "// ============================================================================"
+      ],
+      "message": null,
+      "name": "Priority",
+      "package": "serialization_test",
+      "size": 1,
+      "source_file": "test_messages.sf",
+      "trailing_comments": []
+     },
+     "Status": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "ACTIVE": [
+        1,
+        []
+       ],
+       "ERROR": [
+        2,
+        []
+       ],
+       "INACTIVE": [
+        0,
+        []
+       ],
+       "MAINTENANCE": [
+        3,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "ACTIVE": [],
+       "ERROR": [],
+       "INACTIVE": [],
+       "MAINTENANCE": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "Status",
+      "package": "serialization_test",
+      "size": 1,
+      "source_file": "test_messages.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "test_messages.sf": [
+      "// Combined test messages for struct-frame code generation framework",
+      "// This file consolidates all test message definitions for testing",
+      "//",
+      "// Note: NestedMessage (from original nested_messages.proto) is intentionally",
+      "// excluded because the JavaScript code generator has a bug with nested struct",
+      "// references. The test suite only uses SerializationTestMessage for cross-language",
+      "// testing, so this exclusion doesn't affect test coverage."
+     ]
+    },
+    "messages": {
+     "BasicTypesMessage": {
+      "_class": "Message",
+      "base_size": 204,
+      "comments": [
+       "// ============================================================================",
+       "// Basic Types Test Message (msgid: 201)",
+       "// ============================================================================",
+       "// Test all basic data types"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "description": {
+        "_class": "Field",
+        "comments": [
+         "// Variable string"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Variable string"
+        ],
+        "max_size": 128,
+        "name": "description",
+        "number": 13,
+        "package": "serialization_test",
+        "size": 129,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "device_id": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed string"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed string"
+        ],
+        "max_size": null,
+        "name": "device_id",
+        "number": 12,
+        "package": "serialization_test",
+        "size": 32,
+        "size_option": 32,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "double_precision": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "double",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "double_precision",
+        "number": 10,
+        "package": "serialization_test",
+        "size": 8,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "flag": {
+        "_class": "Field",
+        "comments": [
+         "// Boolean type"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Boolean type"
+        ],
+        "max_size": null,
+        "name": "flag",
+        "number": 11,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "large_int": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int64",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "large_int",
+        "number": 4,
+        "package": "serialization_test",
+        "size": 8,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "large_uint": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint64",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "large_uint",
+        "number": 8,
+        "package": "serialization_test",
+        "size": 8,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "medium_int": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "medium_int",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "medium_uint": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "medium_uint",
+        "number": 6,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "regular_int": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "regular_int",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "regular_uint": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "regular_uint",
+        "number": 7,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "single_precision": {
+        "_class": "Field",
+        "comments": [
+         "// Floating point types"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Floating point types"
+        ],
+        "max_size": null,
+        "name": "single_precision",
+        "number": 9,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "small_int": {
+        "_class": "Field",
+        "comments": [
+         "// Integer types"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Integer types"
+        ],
+        "max_size": null,
+        "name": "small_int",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "small_uint": {
+        "_class": "Field",
+        "comments": [
+         "// Unsigned integer types"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Unsigned integer types"
+        ],
+        "max_size": null,
+        "name": "small_uint",
+        "number": 5,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 201,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Basic Types Test Message (msgid: 201)",
+       "// ============================================================================",
+       "// Test all basic data types"
+      ],
+      "magic_bytes": [
+       181,
+       194
+      ],
+      "magic_bytes_override": null,
+      "min_size": 204,
+      "name": "BasicTypesMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 204,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "CollisionEnumMessage": {
+      "_class": "Message",
+      "base_size": 10,
+      "comments": [
+       "// ============================================================================",
+       "// Collision Enum Test Message (msgid: 214)",
+       "// ============================================================================",
+       "// Tests that an enum named identically to one of the fields (Status status)",
+       "// is correctly renamed to StatusEnum to avoid CS0102 in C#."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {
+       "Status": {
+        "_class": "Enum",
+        "comments": [],
+        "data": {
+         "FAILED": [
+          3,
+          []
+         ],
+         "RUNNING": [
+          1,
+          []
+         ],
+         "STOPPED": [
+          2,
+          []
+         ],
+         "UNKNOWN": [
+          0,
+          []
+         ]
+        },
+        "entry_trailing_comments": {
+         "FAILED": [],
+         "RUNNING": [],
+         "STOPPED": [],
+         "UNKNOWN": []
+        },
+        "extensions_start": null,
+        "is_enum": true,
+        "leading_comments": [],
+        "message": "CollisionEnumMessage",
+        "name": "Status",
+        "package": "serialization_test",
+        "size": 1,
+        "source_file": "test_messages.sf",
+        "trailing_comments": []
+       }
+      },
+      "extensions_start": null,
+      "fields": {
+       "id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "id",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [
+         "// Collision: enum Status + field status -> StatusEnum"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Status",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Collision: enum Status + field status -> StatusEnum"
+        ],
+        "type_message": "CollisionEnumMessage",
+        "type_package": null,
+        "type_ref": {
+         "message": "CollisionEnumMessage",
+         "name": "Status",
+         "package": "serialization_test",
+         "ref": "enum"
+        }
+       },
+       "time": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "double",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "time",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 8,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 214,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Collision Enum Test Message (msgid: 214)",
+       "// ============================================================================",
+       "// Tests that an enum named identically to one of the fields (Status status)",
+       "// is correctly renamed to StatusEnum to avoid CS0102 in C#."
+      ],
+      "magic_bytes": [
+       29,
+       60
+      ],
+      "magic_bytes_override": null,
+      "min_size": 10,
+      "name": "CollisionEnumMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 10,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "ComprehensiveArrayMessage": {
+      "_class": "Message",
+      "base_size": 139,
+      "comments": [],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "bounded_doubles": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "double",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 2,
+        "name": "bounded_doubles",
+        "number": 5,
+        "package": "serialization_test",
+        "size": 17,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "bounded_sensors": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Sensor",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 1,
+        "name": "bounded_sensors",
+        "number": 11,
+        "package": "serialization_test",
+        "size": 23,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "Sensor",
+         "package": "serialization_test",
+         "ref": "message"
+        }
+       },
+       "bounded_statuses": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Status",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 2,
+        "name": "bounded_statuses",
+        "number": 9,
+        "package": "serialization_test",
+        "size": 3,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "Status",
+         "package": "serialization_test",
+         "ref": "enum"
+        }
+       },
+       "bounded_strings": {
+        "_class": "Field",
+        "comments": [
+         "// Bounded string arrays (smaller)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": 12,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Bounded string arrays (smaller)"
+        ],
+        "max_size": 2,
+        "name": "bounded_strings",
+        "number": 7,
+        "package": "serialization_test",
+        "size": 25,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "bounded_uints": {
+        "_class": "Field",
+        "comments": [
+         "// Bounded arrays of primitives"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Bounded arrays of primitives"
+        ],
+        "max_size": 3,
+        "name": "bounded_uints",
+        "number": 4,
+        "package": "serialization_test",
+        "size": 7,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "fixed_bools": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "fixed_bools",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": 4,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "fixed_floats": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "fixed_floats",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 8,
+        "size_option": 2,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "fixed_ints": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed arrays of primitives"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int32",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed arrays of primitives"
+        ],
+        "max_size": null,
+        "name": "fixed_ints",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 12,
+        "size_option": 3,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "fixed_sensors": {
+        "_class": "Field",
+        "comments": [
+         "// Nested message arrays (reduced)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Sensor",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Nested message arrays (reduced)"
+        ],
+        "max_size": null,
+        "name": "fixed_sensors",
+        "number": 10,
+        "package": "serialization_test",
+        "size": 22,
+        "size_option": 1,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "Sensor",
+         "package": "serialization_test",
+         "ref": "message"
+        }
+       },
+       "fixed_statuses": {
+        "_class": "Field",
+        "comments": [
+         "// Enum arrays"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Status",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [
+         "// Enum arrays"
+        ],
+        "max_size": null,
+        "name": "fixed_statuses",
+        "number": 8,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": 2,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "Status",
+         "package": "serialization_test",
+         "ref": "enum"
+        }
+       },
+       "fixed_strings": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed string arrays (smaller strings and fewer of them)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": 8,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed string arrays (smaller strings and fewer of them)"
+        ],
+        "max_size": null,
+        "name": "fixed_strings",
+        "number": 6,
+        "package": "serialization_test",
+        "size": 16,
+        "size_option": 2,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 203,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       137,
+       147
+      ],
+      "magic_bytes_override": null,
+      "min_size": 139,
+      "name": "ComprehensiveArrayMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 139,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "DefaultedOneofEnvelope": {
+      "_class": "Message",
+      "base_size": 6,
+      "comments": [
+       "// Envelope whose first union member is the default-carrying variant."
+      ],
+      "default_bytes": {
+       "hex": "000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "header": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 226,
+      "is_enum": false,
+      "is_envelope": true,
+      "leading_comments": [
+       "// Envelope whose first union member is the default-carrying variant."
+      ],
+      "magic_bytes": [
+       80,
+       250
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "DefaultedOneofEnvelope",
+      "oneofs": {
+       "command": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 4,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "command_a",
+         "command_b"
+        ],
+        "fields": {
+         "command_a": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "DefaultedVariantA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "command_a",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "DefaultedVariantA",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "command_b": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "DefaultedVariantB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "command_b",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 4,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "DefaultedVariantB",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "command",
+        "package": "serialization_test",
+        "size": 4,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          3,
+          {
+           "hex": "aa3412"
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "command_a",
+          3
+         ],
+         [
+          2,
+          "command_b",
+          4
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 6,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "DefaultedVariantA": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Defaulted Oneof Variant Test (msgid: 226)",
+       "// A union member whose type carries schema defaults is materialised eagerly by",
+       "// generators that map union members onto nullable references (C#), so it stays",
+       "// non-null while a *different* variant is the active one. Serialization must",
+       "// therefore pick the payload from the discriminator, never from declaration",
+       "// order or property nullability.",
+       "// ============================================================================",
+       "// Variant A: carries defaults, so generated code constructs it up front."
+      ],
+      "default_bytes": {
+       "hex": "aa3412"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "code": {
+        "_class": "Field",
+        "comments": [],
+        "default": 170,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "code",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": 4660,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Defaulted Oneof Variant Test (msgid: 226)",
+       "// A union member whose type carries schema defaults is materialised eagerly by",
+       "// generators that map union members onto nullable references (C#), so it stays",
+       "// non-null while a *different* variant is the active one. Serialization must",
+       "// therefore pick the payload from the discriminator, never from declaration",
+       "// order or property nullability.",
+       "// ============================================================================",
+       "// Variant A: carries defaults, so generated code constructs it up front."
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "DefaultedVariantA",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 3,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "DefaultedVariantB": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [
+       "// Variant B: no defaults - stays unset until the application assigns it."
+      ],
+      "default_bytes": {
+       "hex": "00000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "payload": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "payload",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Variant B: no defaults - stays unset until the application assigns it."
+      ],
+      "magic_bytes": [
+       6,
+       6
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "DefaultedVariantB",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 4,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "FlattenInner": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Flatten Option Test (msgid: 215)",
+       "// ============================================================================",
+       "// Sub-message for flatten option test (no msgid - used as nested struct)"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "a": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "a",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "b": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "b",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Flatten Option Test (msgid: 215)",
+       "// ============================================================================",
+       "// Sub-message for flatten option test (no msgid - used as nested struct)"
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "FlattenInner",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 3,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "FlattenMessage": {
+      "_class": "Message",
+      "base_size": 7,
+      "comments": [
+       "// Tests flatten=true option: inner fields appear inlined in to_dict() output"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "inner": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "FlattenInner",
+        "flatten": true,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "inner",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 3,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "FlattenInner",
+         "package": "serialization_test",
+         "ref": "message"
+        }
+       },
+       "seq": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "seq",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 215,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Tests flatten=true option: inner fields appear inlined in to_dict() output"
+      ],
+      "magic_bytes": [
+       210,
+       216
+      ],
+      "magic_bytes_override": null,
+      "min_size": 7,
+      "name": "FlattenMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 7,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "MaxSizeOneofMessage": {
+      "_class": "Message",
+      "base_size": 34,
+      "comments": [
+       "// Max-size oneof test message: oneof with max_size override",
+       "// oneof.size is extended to 32 bytes so future larger variants fit."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "header": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 224,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Max-size oneof test message: oneof with max_size override",
+       "// oneof.size is extended to 32 bytes so future larger variants fit."
+      ],
+      "magic_bytes": [
+       97,
+       99
+      ],
+      "magic_bytes_override": null,
+      "min_size": 5,
+      "name": "MaxSizeOneofMessage",
+      "oneofs": {
+       "data": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 32,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "small_payload"
+        ],
+        "fields": {
+         "small_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "small_payload",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadA",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": 32,
+        "min_size_override": null,
+        "name": "data",
+        "package": "serialization_test",
+        "size": 32,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "small_payload",
+          3
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 34,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "Message": {
+      "_class": "Message",
+      "base_size": 274,
+      "comments": [
+       "// ============================================================================",
+       "// Variable Message Test (msgid: 211)",
+       "// ============================================================================",
+       "// Variable message with two variable string fields"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "module": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 16,
+        "name": "module",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 17,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "msg": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 255,
+        "name": "msg",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 256,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "severity": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "MsgSeverity",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "severity",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "MsgSeverity",
+         "package": "serialization_test",
+         "ref": "enum"
+        }
+       }
+      },
+      "id": 211,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Variable Message Test (msgid: 211)",
+       "// ============================================================================",
+       "// Variable message with two variable string fields"
+      ],
+      "magic_bytes": [
+       43,
+       85
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "Message",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 274,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "MinSizeOneofMessage": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [
+       "// Min-size oneof test message: oneof with min_size override",
+       "// VarEnvPayloadA is 3 bytes; min_size = 8 pads it to 8 on the wire.",
+       "// VarEnvPayloadB is 8 bytes; no padding needed (already at min_size)."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "header": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 225,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Min-size oneof test message: oneof with min_size override",
+       "// VarEnvPayloadA is 3 bytes; min_size = 8 pads it to 8 on the wire.",
+       "// VarEnvPayloadB is 8 bytes; no padding needed (already at min_size)."
+      ],
+      "magic_bytes": [
+       194,
+       37
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "MinSizeOneofMessage",
+      "oneofs": {
+       "data": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 8,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "small_payload",
+         "large_payload"
+        ],
+        "fields": {
+         "large_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "large_payload",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 8,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadB",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "small_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "small_payload",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadA",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": 8,
+        "name": "data",
+        "package": "serialization_test",
+        "size": 8,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": true,
+        "variant_extra": [
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          8,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "small_payload",
+          3
+         ],
+         [
+          2,
+          "large_payload",
+          8
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 12,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "MultiOneofMessage": {
+      "_class": "Message",
+      "base_size": 481,
+      "comments": [
+       "// ============================================================================",
+       "// Multiple Oneof Test (msgid: 217)",
+       "// ============================================================================",
+       "// Tests a message with two separate oneof fields."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "selector": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "selector",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 217,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Multiple Oneof Test (msgid: 217)",
+       "// ============================================================================",
+       "// Tests a message with two separate oneof fields."
+      ],
+      "magic_bytes": [
+       219,
+       52
+      ],
+      "magic_bytes_override": null,
+      "min_size": 481,
+      "name": "MultiOneofMessage",
+      "oneofs": {
+       "first_payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 204,
+        "comments": [],
+        "discriminator_mode": "auto",
+        "discriminator_type": "msgid",
+        "extensions_start": null,
+        "field_order": [
+         "basic",
+         "test_msg"
+        ],
+        "fields": {
+         "basic": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BasicTypesMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "basic",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 204,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "BasicTypesMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "test_msg": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SerializationTestMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "test_msg",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 95,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "SerializationTestMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "first_payload",
+        "package": "serialization_test",
+        "size": 204,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          204,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          95,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          201,
+          "basic",
+          204
+         ],
+         [
+          204,
+          "test_msg",
+          95
+         ]
+        ]
+       },
+       "second_payload": {
+        "_class": "OneOf",
+        "auto_discriminator": null,
+        "base_size": 274,
+        "comments": [],
+        "discriminator_mode": "none",
+        "discriminator_type": null,
+        "extensions_start": null,
+        "field_order": [
+         "var_single",
+         "msg_payload"
+        ],
+        "fields": {
+         "msg_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "Message",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "msg_payload",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 274,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "Message",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "var_single": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VariableSingleArray",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "var_single",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 207,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VariableSingleArray",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "second_payload",
+        "package": "serialization_test",
+        "size": 274,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          207,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          274,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          0,
+          "var_single",
+          207
+         ],
+         [
+          0,
+          "msg_payload",
+          274
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 481,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "NestedEnumMessage": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Nested Enum Test Message (msgid: 213)",
+       "// ============================================================================",
+       "// Tests a message-scoped enum definition and a field that references it"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {
+       "OperationMode": {
+        "_class": "Enum",
+        "comments": [
+         "// Enum scoped to this message"
+        ],
+        "data": {
+         "Active": [
+          1,
+          []
+         ],
+         "Calibrating": [
+          2,
+          []
+         ],
+         "ErrorState": [
+          3,
+          []
+         ],
+         "Idle": [
+          0,
+          []
+         ]
+        },
+        "entry_trailing_comments": {
+         "Active": [],
+         "Calibrating": [],
+         "ErrorState": [],
+         "Idle": []
+        },
+        "extensions_start": null,
+        "is_enum": true,
+        "leading_comments": [
+         "// Enum scoped to this message"
+        ],
+        "message": "NestedEnumMessage",
+        "name": "OperationMode",
+        "package": "serialization_test",
+        "size": 1,
+        "source_file": "test_messages.sf",
+        "trailing_comments": []
+       }
+      },
+      "extensions_start": null,
+      "fields": {
+       "enabled": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "enabled",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "mode": {
+        "_class": "Field",
+        "comments": [
+         "// Field using the nested enum"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "OperationMode",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "mode",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Field using the nested enum"
+        ],
+        "type_message": "NestedEnumMessage",
+        "type_package": null,
+        "type_ref": {
+         "message": "NestedEnumMessage",
+         "name": "OperationMode",
+         "package": "serialization_test",
+         "ref": "enum"
+        }
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 213,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Nested Enum Test Message (msgid: 213)",
+       "// ============================================================================",
+       "// Tests a message-scoped enum definition and a field that references it"
+      ],
+      "magic_bytes": [
+       27,
+       58
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "NestedEnumMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 3,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "NestedPayload": {
+      "_class": "Message",
+      "base_size": 67,
+      "comments": [
+       "// ============================================================================",
+       "// Nested Variable Message Tests (msgid: 220)",
+       "// These messages exercise the nested-struct + variable-length code path:",
+       "//   a nested struct containing variable-length fields (string and array),",
+       "//   embedded in a parent message that is also marked option variable = true.",
+       "// ============================================================================",
+       "// Nested struct with variable-length fields (no msgid \u2014 used only as a sub-message)"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "id",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "label": {
+        "_class": "Field",
+        "comments": [
+         "// variable string inside nested struct"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 32,
+        "name": "label",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 33,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// variable string inside nested struct"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "samples": {
+        "_class": "Field",
+        "comments": [
+         "// variable array inside nested struct"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 16,
+        "name": "samples",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 33,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// variable array inside nested struct"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Nested Variable Message Tests (msgid: 220)",
+       "// These messages exercise the nested-struct + variable-length code path:",
+       "//   a nested struct containing variable-length fields (string and array),",
+       "//   embedded in a parent message that is also marked option variable = true.",
+       "// ============================================================================",
+       "// Nested struct with variable-length fields (no msgid \u2014 used only as a sub-message)"
+      ],
+      "magic_bytes": [
+       22,
+       40
+      ],
+      "magic_bytes_override": null,
+      "min_size": 67,
+      "name": "NestedPayload",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 67,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "NestedVariableMessage": {
+      "_class": "Message",
+      "base_size": 136,
+      "comments": [
+       "// Parent message with option variable = true containing a nested struct that has",
+       "// variable-length fields, plus a top-level variable string."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "description": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 64,
+        "name": "description",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 65,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "payload": {
+        "_class": "Field",
+        "comments": [
+         "// nested struct with variable fields"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "NestedPayload",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "payload",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 67,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// nested struct with variable fields"
+        ],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "NestedPayload",
+         "package": "serialization_test",
+         "ref": "message"
+        }
+       },
+       "sequence": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sequence",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 220,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Parent message with option variable = true containing a nested struct that has",
+       "// variable-length fields, plus a top-level variable string."
+      ],
+      "magic_bytes": [
+       68,
+       127
+      ],
+      "magic_bytes_override": null,
+      "min_size": 72,
+      "name": "NestedVariableMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 136,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "NoneDiscriminatorMessage": {
+      "_class": "Message",
+      "base_size": 205,
+      "comments": [
+       "// ============================================================================",
+       "// Discriminator None Oneof Test (msgid: 216)",
+       "// ============================================================================",
+       "// Tests oneof with discriminator=none: no auto-discriminator field is generated.",
+       "// Application must track which variant is active."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "header": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 216,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Discriminator None Oneof Test (msgid: 216)",
+       "// ============================================================================",
+       "// Tests oneof with discriminator=none: no auto-discriminator field is generated.",
+       "// Application must track which variant is active."
+      ],
+      "magic_bytes": [
+       134,
+       72
+      ],
+      "magic_bytes_override": null,
+      "min_size": 205,
+      "name": "NoneDiscriminatorMessage",
+      "oneofs": {
+       "data": {
+        "_class": "OneOf",
+        "auto_discriminator": null,
+        "base_size": 204,
+        "comments": [],
+        "discriminator_mode": "none",
+        "discriminator_type": null,
+        "extensions_start": null,
+        "field_order": [
+         "basic",
+         "test_msg"
+        ],
+        "fields": {
+         "basic": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BasicTypesMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "basic",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 204,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "BasicTypesMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "test_msg": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SerializationTestMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "test_msg",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 95,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "SerializationTestMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "data",
+        "package": "serialization_test",
+        "size": 204,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          204,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          95,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          0,
+          "basic",
+          204
+         ],
+         [
+          0,
+          "test_msg",
+          95
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 205,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "Sensor": {
+      "_class": "Message",
+      "base_size": 22,
+      "comments": [
+       "// ============================================================================",
+       "// Comprehensive Arrays Test (msgid: 203)",
+       "// ============================================================================"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "id",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "name": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "name",
+        "number": 4,
+        "package": "serialization_test",
+        "size": 16,
+        "size_option": 16,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Status",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "serialization_test",
+        "type_ref": {
+         "message": null,
+         "name": "Status",
+         "package": "serialization_test",
+         "ref": "enum"
+        }
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Comprehensive Arrays Test (msgid: 203)",
+       "// ============================================================================"
+      ],
+      "magic_bytes": [
+       44,
+       86
+      ],
+      "magic_bytes_override": null,
+      "min_size": 22,
+      "name": "Sensor",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 22,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "SerializationTestMessage": {
+      "_class": "Message",
+      "base_size": 95,
+      "comments": [
+       "// ============================================================================",
+       "// Serialization Test Message (msgid: 204)",
+       "// ============================================================================",
+       "// A simple message for cross-language serialization testing"
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "magic_number": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "magic_number",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "test_array": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int32",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 5,
+        "name": "test_array",
+        "number": 5,
+        "package": "serialization_test",
+        "size": 21,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "test_bool": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "test_bool",
+        "number": 4,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "test_float": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "test_float",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "test_string": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 64,
+        "name": "test_string",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 65,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 204,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Serialization Test Message (msgid: 204)",
+       "// ============================================================================",
+       "// A simple message for cross-language serialization testing"
+      ],
+      "magic_bytes": [
+       53,
+       152
+      ],
+      "magic_bytes_override": null,
+      "min_size": 95,
+      "name": "SerializationTestMessage",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 95,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "SimplePayload": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Field-Order Discriminator Test (msgid: 212)",
+       "// ============================================================================",
+       "// A message without a msgid (used in field_order discriminator oneof)"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "type_code": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "type_code",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Field-Order Discriminator Test (msgid: 212)",
+       "// ============================================================================",
+       "// A message without a msgid (used in field_order discriminator oneof)"
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "SimplePayload",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 3,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "TruncationTestNonVariable": {
+      "_class": "Message",
+      "base_size": 207,
+      "comments": [
+       "// ============================================================================",
+       "// Truncation Test Messages (msgid: 209-210)",
+       "// These messages are identical except one has variable=true to test truncation",
+       "// ============================================================================",
+       "// Non-variable message with large array (msgid: 209)"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "data_array": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 200 bytes"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 200,
+        "name": "data_array",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 201,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Up to 200 bytes"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "footer": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "footer",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sequence_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sequence_id",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 209,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Truncation Test Messages (msgid: 209-210)",
+       "// These messages are identical except one has variable=true to test truncation",
+       "// ============================================================================",
+       "// Non-variable message with large array (msgid: 209)"
+      ],
+      "magic_bytes": [
+       15,
+       30
+      ],
+      "magic_bytes_override": null,
+      "min_size": 207,
+      "name": "TruncationTestNonVariable",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 207,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "TruncationTestVariable": {
+      "_class": "Message",
+      "base_size": 207,
+      "comments": [
+       "// Variable message with large array (msgid: 210)"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "data_array": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 200 bytes"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 200,
+        "name": "data_array",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 201,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Up to 200 bytes"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "footer": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "footer",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sequence_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sequence_id",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 210,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Variable message with large array (msgid: 210)"
+      ],
+      "magic_bytes": [
+       15,
+       30
+      ],
+      "magic_bytes_override": null,
+      "min_size": 7,
+      "name": "TruncationTestVariable",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 207,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "UnionTestMessage": {
+      "_class": "Message",
+      "base_size": 141,
+      "comments": [
+       "// ============================================================================",
+       "// Union Message Test (msgid: 205)",
+       "// ============================================================================",
+       "// A message demonstrating union-like behavior using oneof",
+       "// Since ComprehensiveArrayMessage and SerializationTestMessage both have",
+       "// message IDs, the generator will automatically add a discriminator field"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {},
+      "id": 205,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Union Message Test (msgid: 205)",
+       "// ============================================================================",
+       "// A message demonstrating union-like behavior using oneof",
+       "// Since ComprehensiveArrayMessage and SerializationTestMessage both have",
+       "// message IDs, the generator will automatically add a discriminator field"
+      ],
+      "magic_bytes": [
+       226,
+       255
+      ],
+      "magic_bytes_override": null,
+      "min_size": 141,
+      "name": "UnionTestMessage",
+      "oneofs": {
+       "payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 139,
+        "comments": [
+         "// oneof payload (auto-discriminator will be added for message ID)"
+        ],
+        "discriminator_mode": "auto",
+        "discriminator_type": "msgid",
+        "extensions_start": null,
+        "field_order": [
+         "array_payload",
+         "test_payload"
+        ],
+        "fields": {
+         "array_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ComprehensiveArrayMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "array_payload",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 139,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "ComprehensiveArrayMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "test_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SerializationTestMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "test_payload",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 95,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "SerializationTestMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// oneof payload (auto-discriminator will be added for message ID)"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "payload",
+        "package": "serialization_test",
+        "size": 139,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          139,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          95,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          203,
+          "array_payload",
+          139
+         ],
+         [
+          204,
+          "test_payload",
+          95
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 141,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "UnionTestMessageFieldOrder": {
+      "_class": "Message",
+      "base_size": 205,
+      "comments": [
+       "// A message using field_order discriminator (SimplePayload has no msgid,",
+       "// so the auto-discriminator falls back to field_order, generating an enum)"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {},
+      "id": 212,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// A message using field_order discriminator (SimplePayload has no msgid,",
+       "// so the auto-discriminator falls back to field_order, generating an enum)"
+      ],
+      "magic_bytes": [
+       243,
+       176
+      ],
+      "magic_bytes_override": null,
+      "min_size": 205,
+      "name": "UnionTestMessageFieldOrder",
+      "oneofs": {
+       "data": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 204,
+        "comments": [
+         "// oneof data (auto-discriminator will use field_order since SimplePayload has no msgid)"
+        ],
+        "discriminator_mode": "auto",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "basic_payload",
+         "simple_payload"
+        ],
+        "fields": {
+         "basic_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BasicTypesMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "basic_payload",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 204,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "BasicTypesMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "simple_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SimplePayload",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "simple_payload",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "SimplePayload",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// oneof data (auto-discriminator will use field_order since SimplePayload has no msgid)"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "data",
+        "package": "serialization_test",
+        "size": 204,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          204,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "basic_payload",
+          204
+         ],
+         [
+          2,
+          "simple_payload",
+          3
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 205,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "VarEnvPayloadA": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// ============================================================================",
+       "// Variable + Oneof Tests (msgid: 221-222)",
+       "// These messages combine option variable = true with a oneof to cover the",
+       "// code-generation bug where variable serializers skipped oneof fields entirely.",
+       "// ============================================================================",
+       "// Small fixed-size payload A (no msgid - used as oneof variant)"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "code": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "code",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Variable + Oneof Tests (msgid: 221-222)",
+       "// These messages combine option variable = true with a oneof to cover the",
+       "// code-generation bug where variable serializers skipped oneof fields entirely.",
+       "// ============================================================================",
+       "// Small fixed-size payload A (no msgid - used as oneof variant)"
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "VarEnvPayloadA",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 3,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "VarEnvPayloadB": {
+      "_class": "Message",
+      "base_size": 8,
+      "comments": [
+       "// Small fixed-size payload B (no msgid - used as oneof variant)"
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "flags": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "flags",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "ratio": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "ratio",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Small fixed-size payload B (no msgid - used as oneof variant)"
+      ],
+      "magic_bytes": [
+       16,
+       22
+      ],
+      "magic_bytes_override": null,
+      "min_size": 8,
+      "name": "VarEnvPayloadB",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 8,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "VariableEnvelopeMessage": {
+      "_class": "Message",
+      "base_size": 10,
+      "comments": [
+       "// Variable envelope with field_order discriminator (msgid: 221)",
+       "// Combines variable = true + is_envelope = true + oneof (field_order)",
+       "// This is the key regression test: discriminator + union must appear on the wire."
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "priority": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed header field (always present on the wire)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed header field (always present on the wire)"
+        ],
+        "max_size": null,
+        "name": "priority",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 221,
+      "is_enum": false,
+      "is_envelope": true,
+      "leading_comments": [
+       "// Variable envelope with field_order discriminator (msgid: 221)",
+       "// Combines variable = true + is_envelope = true + oneof (field_order)",
+       "// This is the key regression test: discriminator + union must appear on the wire."
+      ],
+      "magic_bytes": [
+       194,
+       37
+      ],
+      "magic_bytes_override": null,
+      "min_size": 5,
+      "name": "VariableEnvelopeMessage",
+      "oneofs": {
+       "payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 8,
+        "comments": [
+         "// field_order oneof - discriminator must be serialized in variable format"
+        ],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "payload_a",
+         "payload_b"
+        ],
+        "fields": {
+         "payload_a": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "payload_a",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadA",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "payload_b": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "payload_b",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 8,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadB",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// field_order oneof - discriminator must be serialized in variable format"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "payload",
+        "package": "serialization_test",
+        "size": 8,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          8,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "payload_a",
+          3
+         ],
+         [
+          2,
+          "payload_b",
+          8
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 10,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "VariableEnvelopeMsgIdMessage": {
+      "_class": "Message",
+      "base_size": 207,
+      "comments": [
+       "// Variable envelope with msgid discriminator (msgid: 222)",
+       "// Uses msgs that have IDs so the generator picks msgid discriminator type."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "priority": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "priority",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 222,
+      "is_enum": false,
+      "is_envelope": true,
+      "leading_comments": [
+       "// Variable envelope with msgid discriminator (msgid: 222)",
+       "// Uses msgs that have IDs so the generator picks msgid discriminator type."
+      ],
+      "magic_bytes": [
+       134,
+       72
+      ],
+      "magic_bytes_override": null,
+      "min_size": 98,
+      "name": "VariableEnvelopeMsgIdMessage",
+      "oneofs": {
+       "payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 204,
+        "comments": [
+         "// msgid oneof - uint16 discriminator must be serialized in variable format"
+        ],
+        "discriminator_mode": "auto",
+        "discriminator_type": "msgid",
+        "extensions_start": null,
+        "field_order": [
+         "basic",
+         "test_msg"
+        ],
+        "fields": {
+         "basic": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "BasicTypesMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "basic",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 204,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "BasicTypesMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "test_msg": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SerializationTestMessage",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "test_msg",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 95,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "SerializationTestMessage",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// msgid oneof - uint16 discriminator must be serialized in variable format"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "payload",
+        "package": "serialization_test",
+        "size": 204,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          204,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          95,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          201,
+          "basic",
+          204
+         ],
+         [
+          204,
+          "test_msg",
+          95
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 207,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "VariableMixedFields": {
+      "_class": "Message",
+      "base_size": 354,
+      "comments": [
+       "// Variable message with mixed fixed and variable fields (msgid: 208)"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "fixed_id": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed field"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "fixed_id",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Fixed field"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "fixed_name": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed string"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "fixed_name",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 16,
+        "size_option": 16,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Fixed string"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "fixed_value": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed field"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "fixed_value",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Fixed field"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "variable_data": {
+        "_class": "Field",
+        "comments": [
+         "// Variable array"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 100,
+        "name": "variable_data",
+        "number": 4,
+        "package": "serialization_test",
+        "size": 201,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Variable array"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "variable_desc": {
+        "_class": "Field",
+        "comments": [
+         "// Variable string"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 128,
+        "name": "variable_desc",
+        "number": 5,
+        "package": "serialization_test",
+        "size": 129,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Variable string"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 208,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Variable message with mixed fixed and variable fields (msgid: 208)"
+      ],
+      "magic_bytes": [
+       55,
+       146
+      ],
+      "magic_bytes_override": null,
+      "min_size": 26,
+      "name": "VariableMixedFields",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 354,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "VariableMultipleArrays": {
+      "_class": "Message",
+      "base_size": 368,
+      "comments": [
+       "// Variable message with multiple bounded arrays (msgid: 207)"
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "label": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 64 chars variable string"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 64,
+        "name": "label",
+        "number": 4,
+        "package": "serialization_test",
+        "size": 65,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Up to 64 chars variable string"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "readings": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 200 bytes of int32 data"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int32",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 50,
+        "name": "readings",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 201,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Up to 200 bytes of int32 data"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "type": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "type",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "values": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 100 bytes of float data"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 25,
+        "name": "values",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 101,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Up to 100 bytes of float data"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 207,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Variable message with multiple bounded arrays (msgid: 207)"
+      ],
+      "magic_bytes": [
+       37,
+       70
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "VariableMultipleArrays",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 368,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "VariableOneofMessage": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [
+       "// ============================================================================",
+       "// Variable oneof tests (msgid: 223-224)",
+       "// Tests for option variable = true on a oneof (different from variable message with fixed oneof).",
+       "// Wire format: [disc][uint16 length][variant_bytes]",
+       "// ============================================================================",
+       "// Variable oneof test message: oneof with variable = true",
+       "// Each variant writes only its own bytes (not padded to union size)."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "header": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "header",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 223,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Variable oneof tests (msgid: 223-224)",
+       "// Tests for option variable = true on a oneof (different from variable message with fixed oneof).",
+       "// Wire format: [disc][uint16 length][variant_bytes]",
+       "// ============================================================================",
+       "// Variable oneof test message: oneof with variable = true",
+       "// Each variant writes only its own bytes (not padded to union size)."
+      ],
+      "magic_bytes": [
+       194,
+       37
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "VariableOneofMessage",
+      "oneofs": {
+       "data": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 8,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "small_payload",
+         "large_payload"
+        ],
+        "fields": {
+         "large_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadB",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "large_payload",
+          "number": 2,
+          "package": "serialization_test",
+          "size": 8,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadB",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         },
+         "small_payload": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "VarEnvPayloadA",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "small_payload",
+          "number": 1,
+          "package": "serialization_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "test_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "serialization_test",
+          "type_ref": {
+           "message": null,
+           "name": "VarEnvPayloadA",
+           "package": "serialization_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "data",
+        "package": "serialization_test",
+        "size": 8,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "variable": true,
+        "variant_extra": [
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          8,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "small_payload",
+          3
+         ],
+         [
+          2,
+          "large_payload",
+          8
+         ]
+        ]
+       }
+      },
+      "package": "serialization_test",
+      "size": 12,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "VariableSingleArray": {
+      "_class": "Message",
+      "base_size": 207,
+      "comments": [
+       "// ============================================================================",
+       "// Variable Length Message Tests (msgid: 206-208)",
+       "// These messages use option variable = true for variable-length encoding",
+       "// ============================================================================",
+       "// Variable message with single bounded array (msgid: 206)"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "checksum": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "checksum",
+        "number": 3,
+        "package": "serialization_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "message_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "message_id",
+        "number": 1,
+        "package": "serialization_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "payload": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 200 bytes, only sends used"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 200,
+        "name": "payload",
+        "number": 2,
+        "package": "serialization_test",
+        "size": 201,
+        "size_option": null,
+        "source_file": "test_messages.sf",
+        "trailing_comments": [
+         "// Up to 200 bytes, only sends used"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 206,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Variable Length Message Tests (msgid: 206-208)",
+       "// These messages use option variable = true for variable-length encoding",
+       "// ============================================================================",
+       "// Variable message with single bounded array (msgid: 206)"
+      ],
+      "magic_bytes": [
+       15,
+       30
+      ],
+      "magic_bytes_override": null,
+      "min_size": 7,
+      "name": "VariableSingleArray",
+      "oneofs": {},
+      "package": "serialization_test",
+      "size": 207,
+      "source_file": "test_messages.sf",
+      "trailing_comments": [],
+      "variable": true
+     }
+    },
+    "name": "serialization_test",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "e9d3c2ee49ec4f2f69a0e6c29ec72e8b675b0fb51be8c6c8a8cea85c21db09b0"
+ },
+ "outputs": {
+  "c/serialization_test.structframe.h": "b5ad12378a27932fdfcb9556fe35baaf0fa0bb69d945874195f5c8d75c2678d6",
+  "c/serialization_test.tests.h": "cf981eff909332bdff2ea4849b976297d0870543a16f836779a6eaa868f3eda0",
+  "c/structframe_all.h": "17f764c4b37ef172393f4159b07e17d4c72ea3479fc4b6bbf8fbe4f59b9afbf2",
+  "c/test_roundtrip_serialization_test.c": "9acbbbd8bab0ec10c16729d4d6b6ee127edaf5da026f2d5b4feefd0e5304226f",
+  "cpp/serialization_test.structframe.hpp": "d62dce7f6f000ac013bfdc609944fb4f73c521c9fec870ce5bc966cbf6c55097",
+  "cpp/serialization_test.tests.hpp": "4eb3d12e069dcd7f0508e843959062fd089647589a4e5722af44efb626231b85",
+  "cpp/structframe_all.hpp": "6635e1e51b209183f3921036e6d2a61b412426d3f393a850b1348c967b2bbcdd",
+  "cpp/test_roundtrip_serialization_test.cpp": "b9aa308007c30b1585ee51f841b6fe7e42e59fef1066e669fb50ce1be1f21e2a",
+  "csharp/SerializationTest/Constants.cs": "94a8a32430a8ff34ff8a9027e54ed8cb70e64a17c76892797f2906eefdd3702f",
+  "csharp/SerializationTest/Enums/DefaultedOneofEnvelopeCommandField.cs": "e2a5c479bfeb00cce785a59056505ec5c83f044b6a916da5cbf0f9ad2ec978aa",
+  "csharp/SerializationTest/Enums/MaxSizeOneofMessageDataField.cs": "f204a51029c9cf2b1cd9cf5e99219b4a2d83f8dafbbca32b36be7300aa50e16c",
+  "csharp/SerializationTest/Enums/MinSizeOneofMessageDataField.cs": "803dac9995730772f71ea65d6de22d3b4a70e92f88b74e209a2f25ccc164a434",
+  "csharp/SerializationTest/Enums/MsgSeverity.cs": "fc1c9c69355fdd1bb350a35238fc209fb1642743c2c04a8e9ccad20abac0b963",
+  "csharp/SerializationTest/Enums/Priority.cs": "2fe91aa6dfa40b20cb4a13af5c7d950760494bbc62226222a6a1c016e909453c",
+  "csharp/SerializationTest/Enums/Status.cs": "16ed29517bc6c65ccbef9e6c6b87e77714f3ce5e9345eda0765a354ac3d32763",
+  "csharp/SerializationTest/Enums/UnionTestMessageFieldOrderDataField.cs": "fbadc816798f104a2489dcbe43f9240d44dcbf45b2887bd7e89a7b63c62bd54d",
+  "csharp/SerializationTest/Enums/VariableEnvelopeMessagePayloadField.cs": "6ccdf466a2f5f3962da5bb53103859d822866dc5b6954d37419200555441343a",
+  "csharp/SerializationTest/Enums/VariableOneofMessageDataField.cs": "e8e4ac74284e6c996b3dd78937b559cdf418ae0ef4cab96e7fe97225505c3cca",
+  "csharp/SerializationTest/MessageDefinitions.cs": "823fb6256aae71e5ebe6cf5d1a7e49124aa7b58f6108b5556a0ec7dff2c6aa32",
+  "csharp/SerializationTest/Messages/BasicTypesMessage.cs": "9452739add04ddfff4c14964c8f8fb0a079be5ace7778df7c09527460dce5ace",
+  "csharp/SerializationTest/Messages/CollisionEnumMessage.cs": "fba65f520e9695b421dde78e5f666426d3d35d1fba6d67b2bb5e24fc15186b8e",
+  "csharp/SerializationTest/Messages/ComprehensiveArrayMessage.cs": "0af0864eaddc5078cb370f4317832e5bfc5753bac7e64d626354320a7f0f3fa9",
+  "csharp/SerializationTest/Messages/DefaultedOneofEnvelope.cs": "39d6c42d3291f05aeb6d36d28c22f8eb99fabf58026b4019049581609b562abf",
+  "csharp/SerializationTest/Messages/DefaultedVariantA.cs": "c4e39b9074d5640f0066b24eacd7fdff90026155871b7f9af62b5f6363b3f678",
+  "csharp/SerializationTest/Messages/DefaultedVariantB.cs": "4854a9267a73c0483cd2d78d9cbac850fa1a267ee639cf8f1986fbe3beb486d6",
+  "csharp/SerializationTest/Messages/FlattenInner.cs": "d4e8948b3e3c2860df4619eecfdcd7998d2d4b1ad62cf443d4fd8362eb572705",
+  "csharp/SerializationTest/Messages/FlattenMessage.cs": "45e8016165fcca1109397ebd6fe7e62a2ab213e9de6074dab34111add50372e6",
+  "csharp/SerializationTest/Messages/MaxSizeOneofMessage.cs": "6999c8f4db00bf81f8302b08daf20902cdf7ccd39e7e6294cf34d4ead06a9b89",
+  "csharp/SerializationTest/Messages/Message.cs": "cfa8d2fa18dc7b52d44bc4d71148b028ac86932187f7860f37ec6f9265fdd002",
+  "csharp/SerializationTest/Messages/MinSizeOneofMessage.cs": "2c4ae6e366f69c7960ec0246bd0d727246dead40d121926b10561c59f8c62979",
+  "csharp/SerializationTest/Messages/MultiOneofMessage.cs": "7d1edeb870393ce4dca52c4972f0bbc1b753f91ef45c2f3faeee30e5557c250e",
+  "csharp/SerializationTest/Messages/NestedEnumMessage.cs": "c9ec28380aee6b56e05cacc13e2f210e0a7539f406054b46237bb47aa98751dc",
+  "csharp/SerializationTest/Messages/NestedPayload.cs": "82f052f6fb21dfd341f740717d5de89a92a1d44cfb4abd106e87683df6043ec5",
+  "csharp/SerializationTest/Messages/NestedVariableMessage.cs": "b399707019f37e9b8612796b7f4efa37067b0e65aa80762d4459ed9e049dfefc",
+  "csharp/SerializationTest/Messages/NoneDiscriminatorMessage.cs": "068a43dab366f03384227d84bcb5add5f4afbfc9d388624ddb4a97de88ea563d",
+  "csharp/SerializationTest/Messages/Sensor.cs": "dc0468dc435209000eb38c1952c79ccdb8669014f94322969231002d55670441",
+  "csharp/SerializationTest/Messages/SerializationTestMessage.cs": "2439813edcbebb4f84252d76e57259fd22e23ca8d13e1f848c790ab4b0dcbbc3",
+  "csharp/SerializationTest/Messages/SimplePayload.cs": "4179c2b5e0f3a8b8cd3ada14ed177ff043a448b1c1cd52321bfc001438901acc",
+  "csharp/SerializationTest/Messages/TruncationTestNonVariable.cs": "1933abcb7f86ee3b2cc09aeed902b083bf3865de02e09feebcc9f4290d3e30b6",
+  "csharp/SerializationTest/Messages/TruncationTestVariable.cs": "11217d9c7d9204c345eded1b088057959350bd7824b28b352027ee49414a0c4b",
+  "csharp/SerializationTest/Messages/UnionTestMessage.cs": "29b5a8393c44a6ab54f01ebc5c8d1e4ac5f2c8015ab6e42ccbdaff4f0a4ee129",
+  "csharp/SerializationTest/Messages/UnionTestMessageFieldOrder.cs": "e9e018bb604b9eac735e8dfb7a0578e3b9df0979683fb0b08cc0a027a132283a",
+  "csharp/SerializationTest/Messages/VarEnvPayloadA.cs": "06a3b26c1395c05691345787135cb4beb7783a951e9f816fd5cd9e0b51b11836",
+  "csharp/SerializationTest/Messages/VarEnvPayloadB.cs": "6983ddc5d020efabcf6a2149c59b0f3f620b38b7483f5395bf7cb9691e3424cf",
+  "csharp/SerializationTest/Messages/VariableEnvelopeMessage.cs": "2d640156936ac89ff56cfdc029a4dcdcd97776083769fcd3d60d740f8af01a04",
+  "csharp/SerializationTest/Messages/VariableEnvelopeMsgIdMessage.cs": "bc54aef7bd076429e390f3accf7f494bc8db8c5c7de94be5b030255f315ee8b3",
+  "csharp/SerializationTest/Messages/VariableMixedFields.cs": "8b8aa82b0ab6331486f5d36d47e017822ca59678592514b862b8ef27bbefcdc0",
+  "csharp/SerializationTest/Messages/VariableMultipleArrays.cs": "5203766f4168e1837287d55992ee2308a94e6a6201887e7203aec84fba33a382",
+  "csharp/SerializationTest/Messages/VariableOneofMessage.cs": "50c8bc7d7ec078ce8b6333b9a9af27729ff353ea4404880244d58b4b296c6ce6",
+  "csharp/SerializationTest/Messages/VariableSingleArray.cs": "1553f278ed348f410b9bc24eb743b374effe3324b2dc7ba3c4bd871b6e5401d3",
+  "csharp/SerializationTest/SdkInterface.cs": "1af30807de4b01d4ded06986671bf52e2f8098573f0369cdf0d6fb20704a959f",
+  "csharp/SerializationTest/test_roundtrip_serialization_test.cs": "d8dbb124b319857e87f490e1cdeedfe09ec479ff66193f225e6ce882ab0cf62d",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/schema.graphql": "084f8733fce06d4073d6c0067e3c21fce8360837831d2a86c2e2a1294e8a714c",
+  "gql/serialization_test.graphql": "e9324012e489d2975e2ea5bf2e61ee1e5ff84533130114e1e6b9d62a158f6668",
+  "js/serialization-test.structframe.js": "0ac0c8ef02c2e656c3c141812fb0030f7cd3b61fbec56127cbdcbff6a125d82c",
+  "js/test_roundtrip_serialization_test.js": "ca3f8e58bd8380ded16e0d2b946c0da986fcef11ec66c821e8387f73dbc4cf3d",
+  "py/structframe/serialization_test.py": "ba0d481efc30cf1b4988efa90ea00e65a1e5432ddf71bd13aceba29e1611ab05",
+  "py/structframe/serialization_test_tests.py": "7fd991b741f8a34171ade2bcccfbf63f1e2915e2ed2fb12e64562f41047a091f",
+  "py/test_roundtrip_serialization_test.py": "df286e0f5186353caba4262eff58258cb5422c6219afcf86cb45bfe0e5c9973e",
+  "rust/Cargo.toml": "9502e34a62b5a8aeb2d21041e9756ce8930316e1bbe9d88c85f4430135c575e4",
+  "rust/serialization_test.structframe.rs": "2c699f56d8e0d2dbfcf3cf69918e813261fd092972473cbfe39f5c049eb13566",
+  "rust/test_roundtrip_serialization_test.rs": "bf6c141773745b4d5e85ec2e0f733c1412352755eb8616c3acdbee220a7a90d9",
+  "sf_compile.json": "d1990594f5e2f59725ffc13ac97405aaf04bb6e4cce86b28e10e5d957bcca101",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/serialization-test.structframe.ts": "369328b78c68fc0d1ac540db539d59f52e54599fe321e24c1395afcd5041c05d",
+  "ts/test_roundtrip_serialization_test.ts": "340ecf07269d9ddf654c113743c5a77b344603b87c02b6b23bbef611411b3153"
+ },
+ "outputs_no_packed": {
+  "c/serialization_test.structframe.h": "02f93c3b01014ab9d1ef9b85761f8b21ba86f389d055c70e4dd2987cc9ec55e1",
+  "c/serialization_test.tests.h": "cf981eff909332bdff2ea4849b976297d0870543a16f836779a6eaa868f3eda0",
+  "c/structframe_all.h": "17f764c4b37ef172393f4159b07e17d4c72ea3479fc4b6bbf8fbe4f59b9afbf2",
+  "c/test_roundtrip_serialization_test.c": "9acbbbd8bab0ec10c16729d4d6b6ee127edaf5da026f2d5b4feefd0e5304226f",
+  "cpp/serialization_test.structframe.hpp": "1d29a609c1c32676fcbfc18876187cd08d603cbe5379eef223b5419fb5531209",
+  "cpp/serialization_test.tests.hpp": "4eb3d12e069dcd7f0508e843959062fd089647589a4e5722af44efb626231b85",
+  "cpp/structframe_all.hpp": "6635e1e51b209183f3921036e6d2a61b412426d3f393a850b1348c967b2bbcdd",
+  "cpp/test_roundtrip_serialization_test.cpp": "b9aa308007c30b1585ee51f841b6fe7e42e59fef1066e669fb50ce1be1f21e2a",
+  "csharp/SerializationTest/Constants.cs": "727ab190b427c36deb1dcba191872e7b874056b911c44d54c8019ed47a2f8664",
+  "csharp/SerializationTest/Enums/DefaultedOneofEnvelopeCommandField.cs": "e2a5c479bfeb00cce785a59056505ec5c83f044b6a916da5cbf0f9ad2ec978aa",
+  "csharp/SerializationTest/Enums/MaxSizeOneofMessageDataField.cs": "f204a51029c9cf2b1cd9cf5e99219b4a2d83f8dafbbca32b36be7300aa50e16c",
+  "csharp/SerializationTest/Enums/MinSizeOneofMessageDataField.cs": "803dac9995730772f71ea65d6de22d3b4a70e92f88b74e209a2f25ccc164a434",
+  "csharp/SerializationTest/Enums/MsgSeverity.cs": "fc1c9c69355fdd1bb350a35238fc209fb1642743c2c04a8e9ccad20abac0b963",
+  "csharp/SerializationTest/Enums/Priority.cs": "2fe91aa6dfa40b20cb4a13af5c7d950760494bbc62226222a6a1c016e909453c",
+  "csharp/SerializationTest/Enums/Status.cs": "16ed29517bc6c65ccbef9e6c6b87e77714f3ce5e9345eda0765a354ac3d32763",
+  "csharp/SerializationTest/Enums/UnionTestMessageFieldOrderDataField.cs": "fbadc816798f104a2489dcbe43f9240d44dcbf45b2887bd7e89a7b63c62bd54d",
+  "csharp/SerializationTest/Enums/VariableEnvelopeMessagePayloadField.cs": "6ccdf466a2f5f3962da5bb53103859d822866dc5b6954d37419200555441343a",
+  "csharp/SerializationTest/Enums/VariableOneofMessageDataField.cs": "e8e4ac74284e6c996b3dd78937b559cdf418ae0ef4cab96e7fe97225505c3cca",
+  "csharp/SerializationTest/MessageDefinitions.cs": "d7d9056e292b4ba745ec9673358ced3002ead693e94d9c047cef63036bf1e063",
+  "csharp/SerializationTest/Messages/BasicTypesMessage.cs": "553ff56139ee3b52aa0c39829a3f05cbcb752dff8d8cce39bc9f1332bd488bbc",
+  "csharp/SerializationTest/Messages/CollisionEnumMessage.cs": "35d616173ad20b5236f0e7cef95a8a718b53ff4fc6ed286894b8a4da63be99a7",
+  "csharp/SerializationTest/Messages/ComprehensiveArrayMessage.cs": "443442b1bafbc56a56fccab21f49bc72bf6b60af8cf2edf665d0001379d43435",
+  "csharp/SerializationTest/Messages/DefaultedOneofEnvelope.cs": "6fc076326646114f1b1da56b8e860cc1c1520ee74481fff9f5b5acea095ef13d",
+  "csharp/SerializationTest/Messages/DefaultedVariantA.cs": "cf99393966a10597fc143dbe33f2fb6c9d576df3b87e19ec851bdbf6564f4630",
+  "csharp/SerializationTest/Messages/DefaultedVariantB.cs": "ec39cbd9b576c4a728994a589a160ee0ef835150b23db713a9fc3a75baf58c4d",
+  "csharp/SerializationTest/Messages/FlattenInner.cs": "6b00959b19664e4a342ed8978c4d2d683074c953c176fb10537ad8b54bc10873",
+  "csharp/SerializationTest/Messages/FlattenMessage.cs": "0154258676c4e52ea8212a8c819ffa4d684c218f00d77fbf494e450c87680fa4",
+  "csharp/SerializationTest/Messages/MaxSizeOneofMessage.cs": "6999c8f4db00bf81f8302b08daf20902cdf7ccd39e7e6294cf34d4ead06a9b89",
+  "csharp/SerializationTest/Messages/Message.cs": "cfa8d2fa18dc7b52d44bc4d71148b028ac86932187f7860f37ec6f9265fdd002",
+  "csharp/SerializationTest/Messages/MinSizeOneofMessage.cs": "2c4ae6e366f69c7960ec0246bd0d727246dead40d121926b10561c59f8c62979",
+  "csharp/SerializationTest/Messages/MultiOneofMessage.cs": "33046a5ce8e6dc9994c2aacd58a234ecea36e3c51413fbc125a9316d0c25443f",
+  "csharp/SerializationTest/Messages/NestedEnumMessage.cs": "10ae28921c9bc3f19725257982aef5873283cb30923f8e9f75dbbbd4a46793bf",
+  "csharp/SerializationTest/Messages/NestedPayload.cs": "efe9b31ccc4f2f831a41eb00c325c2c2bf4517076b50b99d577a9b7ce57dee38",
+  "csharp/SerializationTest/Messages/NestedVariableMessage.cs": "b399707019f37e9b8612796b7f4efa37067b0e65aa80762d4459ed9e049dfefc",
+  "csharp/SerializationTest/Messages/NoneDiscriminatorMessage.cs": "52516f7ddacfc553298598e54bb474c8ddaf6907d517c08a78d41d6c03a60cb3",
+  "csharp/SerializationTest/Messages/Sensor.cs": "df7c5de3c0c7649ae2320fd239862ebe55455c988b5e19b6708aed2e1f5acfd0",
+  "csharp/SerializationTest/Messages/SerializationTestMessage.cs": "0eaf053e1aa9df40d6602792ad016dbe391e68d763da6c8d8bfb9ff7e15bce79",
+  "csharp/SerializationTest/Messages/SimplePayload.cs": "73796931a064307b524cf9f2ffe5cb675735a3f3b266e45740763d77ae7c8c6a",
+  "csharp/SerializationTest/Messages/TruncationTestNonVariable.cs": "e98362e4556c2184e888de662aed1a8ca36c4f8af185136e08e0d14afd2aba82",
+  "csharp/SerializationTest/Messages/TruncationTestVariable.cs": "11217d9c7d9204c345eded1b088057959350bd7824b28b352027ee49414a0c4b",
+  "csharp/SerializationTest/Messages/UnionTestMessage.cs": "cf99dbf2c0cee89cfa82f1a6b3029f2c492a0a56310b0503b0e73c353f60df5c",
+  "csharp/SerializationTest/Messages/UnionTestMessageFieldOrder.cs": "36349cfd362c454baa8ba6a9de248da36f363c3e7e2d708e65508ee5d5159e3a",
+  "csharp/SerializationTest/Messages/VarEnvPayloadA.cs": "6026b1d2711c79a69212a0736f8fb6b60d57db7e2152d2374a858024577faa67",
+  "csharp/SerializationTest/Messages/VarEnvPayloadB.cs": "a9856d6a96dea57befb373eefd1f6ee0a79de347bcf7cfa5995805b59ed71993",
+  "csharp/SerializationTest/Messages/VariableEnvelopeMessage.cs": "2d640156936ac89ff56cfdc029a4dcdcd97776083769fcd3d60d740f8af01a04",
+  "csharp/SerializationTest/Messages/VariableEnvelopeMsgIdMessage.cs": "bc54aef7bd076429e390f3accf7f494bc8db8c5c7de94be5b030255f315ee8b3",
+  "csharp/SerializationTest/Messages/VariableMixedFields.cs": "8b8aa82b0ab6331486f5d36d47e017822ca59678592514b862b8ef27bbefcdc0",
+  "csharp/SerializationTest/Messages/VariableMultipleArrays.cs": "5203766f4168e1837287d55992ee2308a94e6a6201887e7203aec84fba33a382",
+  "csharp/SerializationTest/Messages/VariableOneofMessage.cs": "50c8bc7d7ec078ce8b6333b9a9af27729ff353ea4404880244d58b4b296c6ce6",
+  "csharp/SerializationTest/Messages/VariableSingleArray.cs": "1553f278ed348f410b9bc24eb743b374effe3324b2dc7ba3c4bd871b6e5401d3",
+  "csharp/SerializationTest/SdkInterface.cs": "1af30807de4b01d4ded06986671bf52e2f8098573f0369cdf0d6fb20704a959f",
+  "csharp/SerializationTest/test_roundtrip_serialization_test.cs": "d8dbb124b319857e87f490e1cdeedfe09ec479ff66193f225e6ce882ab0cf62d",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/schema.graphql": "084f8733fce06d4073d6c0067e3c21fce8360837831d2a86c2e2a1294e8a714c",
+  "gql/serialization_test.graphql": "e9324012e489d2975e2ea5bf2e61ee1e5ff84533130114e1e6b9d62a158f6668",
+  "js/serialization-test.structframe.js": "f68ff2a7cfcbb80bc9961d3820a1c12fd7107ed4b4dd0ee6e6309799cc2c9c62",
+  "js/test_roundtrip_serialization_test.js": "ca3f8e58bd8380ded16e0d2b946c0da986fcef11ec66c821e8387f73dbc4cf3d",
+  "py/structframe/serialization_test.py": "46168e369218216400cf51fabaa389c99bbe145b14a12adac46d0ea62e7590e2",
+  "py/structframe/serialization_test_tests.py": "7fd991b741f8a34171ade2bcccfbf63f1e2915e2ed2fb12e64562f41047a091f",
+  "py/test_roundtrip_serialization_test.py": "df286e0f5186353caba4262eff58258cb5422c6219afcf86cb45bfe0e5c9973e",
+  "rust/Cargo.toml": "9502e34a62b5a8aeb2d21041e9756ce8930316e1bbe9d88c85f4430135c575e4",
+  "rust/serialization_test.structframe.rs": "4b8fc5d3c448e4871a8292b5fb81fb527a31b13670bcf1b80b14edd053b6fc63",
+  "rust/test_roundtrip_serialization_test.rs": "bf6c141773745b4d5e85ec2e0f733c1412352755eb8616c3acdbee220a7a90d9",
+  "sf_compile.json": "0c72f097884db5d78df40b48188c14aeb2d11efd1a85a8f7cd6b901bd671dbfb",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/serialization-test.structframe.ts": "8384e16cd9da6ef2a5929af7da24d104385b40c58fbc4371f65948e911e325ca",
+  "ts/test_roundtrip_serialization_test.ts": "340ecf07269d9ddf654c113743c5a77b344603b87c02b6b23bbef611411b3153"
+ },
+ "schema": "tests/proto/test_messages.sf"
+}

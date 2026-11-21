@@ -1,0 +1,804 @@
+{
+ "ir": {
+  "documentation_hash": "93cc2d88a10bcc85f4ff0da4bc2fba7a0c8c9c8b8b569ad05ee657c3f24e8760",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "SensorStatus": {
+      "_class": "Enum",
+      "comments": [
+       "/* Enum for sensor status */"
+      ],
+      "data": {
+       "ERROR": [
+        2,
+        []
+       ],
+       "OFFLINE": [
+        0,
+        []
+       ],
+       "ONLINE": [
+        1,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "ERROR": [],
+       "OFFLINE": [],
+       "ONLINE": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [
+       "/* Enum for sensor status */"
+      ],
+      "message": null,
+      "name": "SensorStatus",
+      "package": "sensor_data",
+      "size": 1,
+      "source_file": "example.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "example.sf": [
+      "// Example struct-frame file demonstrating syntax"
+     ]
+    },
+    "messages": {
+     "Container": {
+      "_class": "Message",
+      "base_size": 456,
+      "comments": [],
+      "default_bytes": {
+       "hex": "0100000000756e6b6e6f776e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "reading": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "SensorReading",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "reading",
+        "number": 1,
+        "package": "sensor_data",
+        "size": 226,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "sensor_data",
+        "type_ref": {
+         "message": null,
+         "name": "SensorReading",
+         "package": "sensor_data",
+         "ref": "message"
+        }
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       66,
+       226
+      ],
+      "magic_bytes_override": null,
+      "min_size": 230,
+      "name": "Container",
+      "oneofs": {
+       "payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 226,
+        "comments": [],
+        "discriminator_mode": "auto",
+        "discriminator_type": "msgid",
+        "extensions_start": null,
+        "field_order": [
+         "sensor",
+         "device"
+        ],
+        "fields": {
+         "device": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "DeviceStatus",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "device",
+          "number": 2,
+          "package": "sensor_data",
+          "size": 12,
+          "size_option": null,
+          "source_file": "example.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "sensor_data",
+          "type_ref": {
+           "message": null,
+           "name": "DeviceStatus",
+           "package": "sensor_data",
+           "ref": "message"
+          }
+         },
+         "sensor": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SensorReading",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "sensor",
+          "number": 1,
+          "package": "sensor_data",
+          "size": 226,
+          "size_option": null,
+          "source_file": "example.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "sensor_data",
+          "type_ref": {
+           "message": null,
+           "name": "SensorReading",
+           "package": "sensor_data",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "payload",
+        "package": "sensor_data",
+        "size": 226,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "variable": true,
+        "variant_extra": [
+         [
+          226,
+          {
+           "hex": "0100000000756e6b6e6f776e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "sensor",
+          226
+         ],
+         [
+          3,
+          "device",
+          12
+         ]
+        ]
+       }
+      },
+      "package": "sensor_data",
+      "size": 456,
+      "source_file": "example.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "DeviceStatus": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [
+       "// Wire-evolution example: v2 adds extension fields without breaking v1 receivers",
+       "// Override CRC seed for schema compatibility"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": 4,
+      "fields": {
+       "cpu_temp": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": true,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "cpu_temp",
+        "number": 5,
+        "package": "sensor_data",
+        "size": 4,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "device_id": {
+        "_class": "Field",
+        "comments": [
+         "// Base fields (always on the wire)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Base fields (always on the wire)"
+        ],
+        "max_size": null,
+        "name": "device_id",
+        "number": 1,
+        "package": "sensor_data",
+        "size": 1,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "error_flags": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "error_flags",
+        "number": 3,
+        "package": "sensor_data",
+        "size": 2,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status_code": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status_code",
+        "number": 2,
+        "package": "sensor_data",
+        "size": 1,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "uptime_seconds": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": true,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "uptime_seconds",
+        "number": 4,
+        "package": "sensor_data",
+        "size": 4,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 3,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Wire-evolution example: v2 adds extension fields without breaking v1 receivers"
+      ],
+      "magic_bytes": [
+       163,
+       127
+      ],
+      "magic_bytes_override": [
+       163,
+       127
+      ],
+      "min_size": 12,
+      "name": "DeviceStatus",
+      "oneofs": {},
+      "package": "sensor_data",
+      "size": 12,
+      "source_file": "example.sf",
+      "trailing_comments": [
+       "// Override CRC seed for schema compatibility"
+      ],
+      "variable": false
+     },
+     "JobMessage": {
+      "_class": "Message",
+      "base_size": 228,
+      "comments": [
+       "// Oneof-level extensions example"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "run_immediately": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "run_immediately",
+        "number": 1,
+        "package": "sensor_data",
+        "size": 1,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 4,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Oneof-level extensions example"
+      ],
+      "magic_bytes": [
+       62,
+       70
+      ],
+      "magic_bytes_override": null,
+      "min_size": 228,
+      "name": "JobMessage",
+      "oneofs": {
+       "job": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 226,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": 2,
+        "field_order": [
+         "sensor_job",
+         "device_job"
+        ],
+        "fields": {
+         "device_job": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "DeviceStatus",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": true,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "device_job",
+          "number": 2,
+          "package": "sensor_data",
+          "size": 12,
+          "size_option": null,
+          "source_file": "example.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "sensor_data",
+          "type_ref": {
+           "message": null,
+           "name": "DeviceStatus",
+           "package": "sensor_data",
+           "ref": "message"
+          }
+         },
+         "sensor_job": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SensorReading",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "sensor_job",
+          "number": 1,
+          "package": "sensor_data",
+          "size": 226,
+          "size_option": null,
+          "source_file": "example.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "sensor_data",
+          "type_ref": {
+           "message": null,
+           "name": "SensorReading",
+           "package": "sensor_data",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "job",
+        "package": "sensor_data",
+        "size": 226,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          226,
+          {
+           "hex": "0100000000756e6b6e6f776e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "sensor_job",
+          226
+         ],
+         [
+          2,
+          "device_job",
+          12
+         ]
+        ]
+       }
+      },
+      "package": "sensor_data",
+      "size": 228,
+      "source_file": "example.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "SensorReading": {
+      "_class": "Message",
+      "base_size": 226,
+      "comments": [],
+      "default_bytes": {
+       "hex": "0100000000756e6b6e6f776e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "data": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 200,
+        "name": "data",
+        "number": 4,
+        "package": "sensor_data",
+        "size": 201,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "name": {
+        "_class": "Field",
+        "comments": [],
+        "default": "unknown",
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "name",
+        "number": 3,
+        "package": "sensor_data",
+        "size": 16,
+        "size_option": 16,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [],
+        "default": "ONLINE",
+        "default_numeric": 1,
+        "element_size": null,
+        "field_type": "SensorStatus",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 1,
+        "package": "sensor_data",
+        "size": 1,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "sensor_data",
+        "type_ref": {
+         "message": null,
+         "name": "SensorStatus",
+         "package": "sensor_data",
+         "ref": "enum"
+        }
+       },
+       "timestamp": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "timestamp",
+        "number": 5,
+        "package": "sensor_data",
+        "size": 4,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": 0.0,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "sensor_data",
+        "size": 4,
+        "size_option": null,
+        "source_file": "example.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       54,
+       175
+      ],
+      "magic_bytes_override": null,
+      "min_size": 26,
+      "name": "SensorReading",
+      "oneofs": {},
+      "package": "sensor_data",
+      "size": 226,
+      "source_file": "example.sf",
+      "trailing_comments": [],
+      "variable": true
+     }
+    },
+    "name": "sensor_data",
+    "package_id": 1,
+    "package_id_explicit": true,
+    "services": {}
+   }
+  ],
+  "schema_hash": "bb1101dc082d03eedf00610b1ac46906532e0588585316466244f9ef2496072e"
+ },
+ "outputs": {
+  "c/sensor_data.structframe.h": "f8c5b353ff75338c906f1e1df3e1cf01a94e6c994c80f9d1b9db00597711af1e",
+  "c/sensor_data.tests.h": "814da139e601c506a72d756a5b99510a21b0b46327ed4cae8f02fb0fc083cd62",
+  "c/structframe_all.h": "0eaf51eb5c8fdc846aedffd1cfd81ee2d09c425ad921b271b3ab2dead9ee447c",
+  "c/test_roundtrip_sensor_data.c": "327ef64db8b9a980eef303d67a183330f12a2aea951d7f9bd2e546aea745f43d",
+  "cpp/sensor_data.structframe.hpp": "13cd0d0365c05807ed917d6e9514c2b72023a7c2ef949eda943c95e827589e6f",
+  "cpp/sensor_data.tests.hpp": "a892c896f8dac9b7f6b05042f3f85ec2d83331547c06869a3d678cd37cf4651a",
+  "cpp/structframe_all.hpp": "597155dd2e23b84262a0268a9b81366aa1132c5127c50ddd19c0c243cb0d3182",
+  "cpp/test_roundtrip_sensor_data.cpp": "9ec641f78c5c8ed5f2840efc04b39b592596ed6947b44f8e1b8914749a30b43b",
+  "csharp/SensorData/Constants.cs": "6d52e63ebf95e4dd9efe8ed4a290783793e26642a8350199730544c6528a3a3d",
+  "csharp/SensorData/Enums/JobMessageJobField.cs": "40ee594cb96e9cb1d32a81e1817080c018ce723a4eb8221bbefe6c9857a985ba",
+  "csharp/SensorData/Enums/SensorStatus.cs": "30e405b8916dc8c3f78edf0c2a07773e6564c431d44769f62c6be6769430d3e4",
+  "csharp/SensorData/MessageDefinitions.cs": "1168b617804263d56c94177e5d540def56aac12a5dc06e5e7bdcbdd5c5c5561f",
+  "csharp/SensorData/Messages/Container.cs": "0c9661466ea0abf677ffed15e2efba0f84053a32dc29707e6e0ba9fc6c1bb999",
+  "csharp/SensorData/Messages/DeviceStatus.cs": "76f576049066114acec26ac89f30595615ec68dd6ba82dc04ab7ae919a0e3be4",
+  "csharp/SensorData/Messages/JobMessage.cs": "8027f8932872ea949bd3318bd93c048cb75554ceba8cb3c5790611455e9f9721",
+  "csharp/SensorData/Messages/SensorReading.cs": "796fedf9dd3cf9b11b2507d6ca88fbf63d311043c3f893f71bd8adab172248ce",
+  "csharp/SensorData/PackageInfo.cs": "787627e183025abab5b0141cb8d170f14c49d1c9192a6d2298cd6c89249d08de",
+  "csharp/SensorData/SdkInterface.cs": "e84661f936aa4a7fa3acbc12f623004b16338450c0ca5751d24329a96435e6ef",
+  "csharp/SensorData/test_roundtrip_sensor_data.cs": "0142cf34367705511d1a515914ee6c71b6bc097454ac1e1f4063046e50612cc6",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/schema.graphql": "3805736e52e0d058e34e95042ad15d9aa1b7955c5efaab543adfa0bc23c7be69",
+  "gql/sensor_data.graphql": "832529b2f5970416d09802e017710826a56a379c101c4135be3373c1c3fbf558",
+  "js/sensor-data.structframe.js": "7e6b9b18b1666d7452a2c03f9434386c4ac049d1dc5c6754bb8117d300733bda",
+  "js/test_roundtrip_sensor_data.js": "0532f5744e951ac94222ba10f74a4ca431e0ba4a0c88d1b1e570fede0f501cea",
+  "py/structframe/sensor_data.py": "97ffa49d25497d9bb2e5c0d82fb692bb230e05551a674be42e26356c527ed74e",
+  "py/structframe/sensor_data_tests.py": "03467977393e10f21c601f0525a0de61b16828c1f8ae49ea513cdb21588e3e6a",
+  "py/test_roundtrip_sensor_data.py": "fb0aa0a989d9f65c8d86e5dbca0223ca2dff64165da9990ff679d60216e9b20c",
+  "rust/Cargo.toml": "6019c0907affc3f8a7039f4337271eecf41f077e2dda4c9977295568b277e808",
+  "rust/sensor_data.structframe.rs": "0d248adcfbd21b22cc7515d34708c5359db2b4f953c23bdcc09cce56d165d406",
+  "rust/test_roundtrip_sensor_data.rs": "ea21454e4176d4e6b4d5dc6de3834dcf7e27f0af87165821bcf2d2eafaa1bed3",
+  "sf_compile.json": "7b18e9cd2f0704d5926e69fa73706c84e1ceddf75c496d24291372f04aa853af",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/sensor-data.structframe.ts": "37889ad77eaed77787646fe7e50033fb90e4248a03b69c5fd8e2519937309c30",
+  "ts/test_roundtrip_sensor_data.ts": "0c149bc558c07b1df427b06d18199ccb34241ca52dfb584223bd7451014cc56e"
+ },
+ "outputs_no_packed": {
+  "c/sensor_data.structframe.h": "a0efa1d3b31961761ceb0b3ffd4ddc87c594b306b34bdd37a0ff4c2dd36c79ec",
+  "c/sensor_data.tests.h": "814da139e601c506a72d756a5b99510a21b0b46327ed4cae8f02fb0fc083cd62",
+  "c/structframe_all.h": "0eaf51eb5c8fdc846aedffd1cfd81ee2d09c425ad921b271b3ab2dead9ee447c",
+  "c/test_roundtrip_sensor_data.c": "327ef64db8b9a980eef303d67a183330f12a2aea951d7f9bd2e546aea745f43d",
+  "cpp/sensor_data.structframe.hpp": "25abd2383481b7dbe911534c39eb74a78da14d3462a8f060862c19d16d8e1044",
+  "cpp/sensor_data.tests.hpp": "a892c896f8dac9b7f6b05042f3f85ec2d83331547c06869a3d678cd37cf4651a",
+  "cpp/structframe_all.hpp": "597155dd2e23b84262a0268a9b81366aa1132c5127c50ddd19c0c243cb0d3182",
+  "cpp/test_roundtrip_sensor_data.cpp": "9ec641f78c5c8ed5f2840efc04b39b592596ed6947b44f8e1b8914749a30b43b",
+  "csharp/SensorData/Constants.cs": "83591403a765f8c0b2418dec86dbf22a23614f0c45ee1358a1a7cbc84f34937c",
+  "csharp/SensorData/Enums/JobMessageJobField.cs": "40ee594cb96e9cb1d32a81e1817080c018ce723a4eb8221bbefe6c9857a985ba",
+  "csharp/SensorData/Enums/SensorStatus.cs": "30e405b8916dc8c3f78edf0c2a07773e6564c431d44769f62c6be6769430d3e4",
+  "csharp/SensorData/MessageDefinitions.cs": "d51e3794d3b6f9d32386013632a30fd4c0e29ffe5f9e4b4b68508eae355ce14c",
+  "csharp/SensorData/Messages/Container.cs": "0c9661466ea0abf677ffed15e2efba0f84053a32dc29707e6e0ba9fc6c1bb999",
+  "csharp/SensorData/Messages/DeviceStatus.cs": "e8f4472331a539367793ae7f7116803189489aeff51217994af52c8c0a6e079f",
+  "csharp/SensorData/Messages/JobMessage.cs": "80eb0178c29976d6d4fee882fb7ce2b93a4a7023f9eefd40d3105480c636b2fa",
+  "csharp/SensorData/Messages/SensorReading.cs": "796fedf9dd3cf9b11b2507d6ca88fbf63d311043c3f893f71bd8adab172248ce",
+  "csharp/SensorData/PackageInfo.cs": "787627e183025abab5b0141cb8d170f14c49d1c9192a6d2298cd6c89249d08de",
+  "csharp/SensorData/SdkInterface.cs": "e84661f936aa4a7fa3acbc12f623004b16338450c0ca5751d24329a96435e6ef",
+  "csharp/SensorData/test_roundtrip_sensor_data.cs": "0142cf34367705511d1a515914ee6c71b6bc097454ac1e1f4063046e50612cc6",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/schema.graphql": "3805736e52e0d058e34e95042ad15d9aa1b7955c5efaab543adfa0bc23c7be69",
+  "gql/sensor_data.graphql": "832529b2f5970416d09802e017710826a56a379c101c4135be3373c1c3fbf558",
+  "js/sensor-data.structframe.js": "975a2a449b856f377002c602c8eaf0b6a8b7f44268a2e21069ed93ffff68bcf3",
+  "js/test_roundtrip_sensor_data.js": "0532f5744e951ac94222ba10f74a4ca431e0ba4a0c88d1b1e570fede0f501cea",
+  "py/structframe/sensor_data.py": "85ce84d1b671cbc20e78a9e5fcfe78b1fb0fb9d22c9cbbcd5c630a9b8e8c3463",
+  "py/structframe/sensor_data_tests.py": "03467977393e10f21c601f0525a0de61b16828c1f8ae49ea513cdb21588e3e6a",
+  "py/test_roundtrip_sensor_data.py": "fb0aa0a989d9f65c8d86e5dbca0223ca2dff64165da9990ff679d60216e9b20c",
+  "rust/Cargo.toml": "6019c0907affc3f8a7039f4337271eecf41f077e2dda4c9977295568b277e808",
+  "rust/sensor_data.structframe.rs": "432c63a50d040ba2b73293df4010d5eb73d8ea1c419000aa7f37d386b4250913",
+  "rust/test_roundtrip_sensor_data.rs": "ea21454e4176d4e6b4d5dc6de3834dcf7e27f0af87165821bcf2d2eafaa1bed3",
+  "sf_compile.json": "057631fa9dfe760dce34aa5d85ac0d2c0b4381c933c9624e0335f27a1319a73c",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/sensor-data.structframe.ts": "208549ae337471b9468176f38fe24557e18460c8ab1f64baaf7c3c0c96be6776",
+  "ts/test_roundtrip_sensor_data.ts": "0c149bc558c07b1df427b06d18199ccb34241ca52dfb584223bd7451014cc56e"
+ },
+ "schema": "editors/vscode/examples/example.sf"
+}

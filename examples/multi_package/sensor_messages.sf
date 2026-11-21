@@ -1,20 +1,17 @@
-// Sensor messages that use the types declared in sensor_types.sf.
-package sensors;
+/// Sensor messages that use the types declared in sensor_types.sf.
 
-option pkgid = 2;  // same package (and pkgid) as sensor_types.sf
+package sensors @2;  // same package (and pkgid) as sensor_types.sf
 
 import "sensor_types.sf";
 
-message SensorReading {
-  option msgid = 1;
-  SensorType type = 1;
-  float value = 2;
-  SensorStatus status = 3;
+message SensorReading @1 {
+  SensorType type;
+  float value;
+  SensorStatus status;
 }
 
-message SensorConfig {
-  option msgid = 2;
-  SensorType type = 1;
-  uint32 sample_rate_hz = 2;
-  bool enabled = 3;
+message SensorConfig @2 {
+  SensorType type;
+  uint32 sample_rate_hz;
+  bool enabled;
 }

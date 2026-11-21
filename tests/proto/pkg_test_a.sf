@@ -1,7 +1,6 @@
-// Package A for testing package imports and inheritance
-package pkg_test_a;
+/// Package A for testing package imports and inheritance
 
-option pkgid = 2;
+package pkg_test_a @2;
 
 enum ActionType {
   START = 0;
@@ -10,9 +9,8 @@ enum ActionType {
   RESUME = 3;
 }
 
-message ActionMessage {
-  option msgid = 1;
-  ActionType action = 1;
-  uint32 target_id = 2;
-  string description = 3 [max_size=64];
+message ActionMessage @1 {
+  ActionType action;
+  uint32 target_id;
+  string<64> description;
 }

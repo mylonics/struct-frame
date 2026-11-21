@@ -1,4 +1,5 @@
-// Minimal schema used by the hello.c, hello.py and hello.ts examples.
+/// Minimal schema used by the hello.c, hello.py and hello.ts examples.
+
 package hello;
 
 enum VehicleType {
@@ -7,15 +8,13 @@ enum VehicleType {
   QUADCOPTER = 2;
 }
 
-message Pose {
-  option msgid = 1;
-  float pitch = 1;
-  float yaw_rate = 2;
-  uint32 sample = 3;
+message Pose @1 {
+  float pitch;
+  float yaw_rate;
+  uint32 sample;
 }
 
-message Heartbeat {
-  option msgid = 2;
-  uint8 id = 1;
-  VehicleType type = 2;
+message Heartbeat @2 {
+  uint8 id;
+  VehicleType type;
 }

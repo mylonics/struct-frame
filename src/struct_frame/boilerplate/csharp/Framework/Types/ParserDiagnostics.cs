@@ -39,5 +39,14 @@ namespace StructFrame
         /// Indicates dropped packets.
         /// </summary>
         public int CntSeqGaps;
+
+        /// <summary>Valid system frames (payload type 9), delivered or hidden.</summary>
+        public int CntSystemFrames;
+
+        /// <summary>
+        /// Candidate system frames whose header named an unknown system message or an
+        /// impossible length; the reader resynchronised at once instead of collecting a payload.
+        /// </summary>
+        public int CntSystemRejected;
     }
 }

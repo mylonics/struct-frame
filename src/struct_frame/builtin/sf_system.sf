@@ -1,0 +1,200 @@
+/// struct-frame system messages.
+///
+/// These messages travel in system frames (payload type 9, second start byte 0x79 after
+/// a Basic header, or start byte 0x79 for a Tiny header), never in ordinary frames, so
+/// their ids can never collide with application message ids. Every system frame carries
+/// a sequence number, the sender's system and component ids, a 16-bit length and a CRC:
+///
+///     [start bytes][SEQ][SYS][COMP][LEN lo][LEN hi][SYS_MSG_ID] payload [CRC1][CRC2]
+///
+/// Id ranges: 0x01-0x7F struct-frame core, 0x80-0xEF reserved, 0xF0-0xFF vendor use.
+/// Some messages carry a raw "tail" after their fixed fields (padding, test data, an
+/// RPC payload); its length is the frame length minus the message size.
+///
+/// Fields are ordered 8/4/2/1-byte so the generated C/C++ structs have no padding.
+
+package sf_system;
+
+/// Version of the system-message protocol described here.
+const uint8 PROTOCOL_VERSION = 1;
+
+/// Largest raw tail accepted after a system message's fixed fields.
+const uint16 MAX_TAIL = 1024;
+
+/// Operating state a node reports in its heartbeat.
+enum NodeState {
+  BOOT = 0;
+  ACTIVE = 1;
+  DEGRADED = 2;
+  ERROR = 3;
+  SHUTDOWN = 4;
+}
+
+/// Capability bits of Heartbeat.flags.
+enum Capability {
+  NONE = 0;
+  LINK_TEST = 1;
+  RPC_SERVER = 2;
+  LINK_STATS = 4;
+}
+
+/// Liveness and identity of a node, sent every interval_ms.
+message Heartbeat @0x01 {
+  /// Milliseconds since the node started (wraps).
+  uint32 uptime_ms;
+  /// Heartbeats sent since the node started (wraps). A drop marks a restart.
+  uint32 counter;
+  /// Fingerprint of the sender's application message set (0 when unknown).
+  uint32 wire_hash;
+  /// The sender's heartbeat period.
+  uint16 interval_ms;
+  /// PROTOCOL_VERSION of the sender.
+  uint8 protocol_version;
+  /// Application-defined node type.
+  uint8 node_type;
+  /// A NodeState value.
+  uint8 state;
+  /// Capability bits.
+  uint8 flags;
+}
+
+/// Link counters of the sender's receive path, sent with every Nth heartbeat.
+message LinkStats @0x02 {
+  uint64 rx_bytes;
+  uint64 tx_bytes;
+  uint32 rx_frames;
+  uint32 tx_frames;
+  uint32 crc_failures;
+  uint32 sync_recoveries;
+  uint32 seq_gaps;
+  uint32 len_errors;
+}
+
+/// Round-trip probe. Tail: padding, echoed back in the Pong.
+message Ping @0x10 {
+  /// The initiator's clock in microseconds, echoed unchanged.
+  uint64 t_send_us;
+  uint32 seq;
+  /// Node that should answer (0 = any).
+  uint8 target_sys;
+  uint8 target_comp;
+}
+
+/// Answer to a Ping. Tail: the Ping's padding.
+message Pong @0x11 {
+  /// Copied from the Ping.
+  uint64 t_send_us;
+  /// Copied from the Ping.
+  uint32 seq;
+  /// Largest system-message tail the responder accepts.
+  uint16 max_tail;
+}
+
+/// Direction of a link test.
+enum LinkTestMode {
+  /// The initiator sends data frames; the responder counts them.
+  UPLINK = 0;
+  /// The responder sends data frames; the initiator counts them.
+  DOWNLINK = 1;
+  /// The initiator sends data frames; the responder sends each one back.
+  ECHO = 2;
+}
+
+/// Result codes of LinkTestAck.
+enum LinkTestStatus {
+  OK = 0;
+  BUSY = 1;
+  TOO_LARGE = 2;
+  UNSUPPORTED = 3;
+}
+
+/// Starts a link test session.
+message LinkTestStart @0x20 {
+  /// Data frames to send (0 = until stopped or duration_ms elapses).
+  uint32 frame_count;
+  /// Test length (0 = until stopped or frame_count frames were sent).
+  uint32 duration_ms;
+  /// Seed of the pseudo-random payload.
+  uint32 seed;
+  /// Bytes of pseudo-random payload per data frame.
+  uint16 payload_size;
+  /// Downlink frames per second (0 = as fast as possible).
+  uint16 rate_hz;
+  uint8 test_id;
+  /// A LinkTestMode value.
+  uint8 mode;
+  uint8 target_sys;
+  uint8 target_comp;
+}
+
+/// The responder's answer to LinkTestStart.
+message LinkTestAck @0x21 {
+  uint16 max_tail;
+  uint8 test_id;
+  /// A LinkTestStatus value.
+  uint8 status;
+}
+
+/// One test frame. Tail: payload_size bytes of the pseudo-random pattern for seq.
+message LinkTestData @0x22 {
+  uint32 seq;
+  uint8 test_id;
+}
+
+/// Ends a link test session; the receiving side answers with a LinkTestReport.
+message LinkTestStop @0x23 {
+  uint8 test_id;
+}
+
+/// Counters of the receiving side of a link test session.
+message LinkTestReport @0x24 {
+  uint64 bytes_received;
+  uint32 frames_received;
+  /// Frames that passed the CRC but whose payload did not match the pattern.
+  uint32 frames_corrupted;
+  uint32 frames_lost;
+  uint32 frames_duplicate;
+  uint32 frames_reordered;
+  /// Microseconds between the first and the last data frame received.
+  uint32 first_to_last_us;
+  uint32 crc_failures;
+  uint32 sync_recoveries;
+  uint8 test_id;
+}
+
+/// Result codes of RpcResponse.
+enum RpcStatus {
+  OK = 0;
+  UNKNOWN_METHOD = 1;
+  SCHEMA_MISMATCH = 2;
+  DECODE_ERROR = 3;
+  HANDLER_ERROR = 4;
+  BUSY = 5;
+}
+
+/// A remote call. Tail: the request message's payload.
+message RpcRequest @0x30 {
+  /// Chosen by the caller; the response repeats it.
+  uint16 call_id;
+  /// Id of the request message in the tail (the method).
+  uint16 payload_id;
+  /// Magic bytes of the request message, so a server built from another schema rejects it.
+  uint8 payload_magic1;
+  uint8 payload_magic2;
+  /// Node that should execute the call (0 = any).
+  uint8 target_sys;
+  uint8 target_comp;
+}
+
+/// The answer to an RpcRequest. Tail: the response message's payload (empty for an
+/// acknowledgement-only rpc or a failure).
+message RpcResponse @0x31 {
+  uint16 call_id;
+  /// Id of the response message in the tail (0 for an acknowledgement-only rpc).
+  uint16 payload_id;
+  /// Magic bytes of the response message (0 for an acknowledgement-only rpc).
+  uint8 payload_magic1;
+  uint8 payload_magic2;
+  /// An RpcStatus value.
+  uint8 status;
+}

@@ -9,6 +9,7 @@ classes with manual Pack/Unpack methods for binary compatibility.
 
 from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values, normalize_bytes_type
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
 import os
 import time
 
@@ -60,16 +61,83 @@ def _csharp_scalar_default_literal(field, base_type):
         # PascalCase (EnumCSharpGen.generate_nested) -- see Field.type_message.
         entry = pascal_case(field.default) if field.type_message else _style_c.enum_entry(field.default)
         return f'{base_type}.{entry}'
-    if field.field_type == "bool":
-        return "true" if field.default else "false"
-    if field.field_type == "float":
-        return f"{field.default}f"
-    if field.field_type == "double":
-        return f"{field.default}d"
-    if field.field_type in ("int64", "uint64"):
-        suffix = "L" if field.field_type == "int64" else "UL"
-        return f"{field.default}{suffix}"
-    return f"{field.default}"
+    return _lit.cs_scalar(field.field_type, field.default)
+
+
+def _cs_bytes_of(value):
+    return value if isinstance(value, (bytes, bytearray)) else value.encode('utf-8')
+
+
+def _cs_is_struct_field(field):
+    return not field.is_default_type and not field.is_enum and field.type_ref is not None
+
+
+def _cs_struct_has_defaults(msg):
+    return msg is not None and getattr(msg, 'default_bytes', b"") not in (b"", b"\x00" * msg.size)
+
+
+def _cs_base_type(field):
+    type_name = normalize_bytes_type(field.field_type)
+    return csharp_types.get(type_name, type_name)
+
+
+def _cs_bytes_expr(data, length):
+    return 'new byte[] { ' + _csharp_byte_array_literal(bytes(data).ljust(length, b"\x00")) + ' }'
+
+
+def _cs_scalar_expr(field, value):
+    if field.is_enum:
+        entry = pascal_case(value) if field.type_message else _style_c.enum_entry(value)
+        return f'{_cs_base_type(field)}.{entry}'
+    return _lit.cs_scalar(field.field_type, value)
+
+
+def _cs_struct_expr(field, value):
+    """``new T { Prop = ..., ... }`` for a struct value (unset fields keep T's defaults)."""
+    pairs = []
+    for name, sub_value in value.items():
+        pairs.extend(_cs_property_values(field.type_ref.fields[name], sub_value))
+    inits = ', '.join(f'{prop} = {expr}' for prop, expr in pairs)
+    return f'new {_cs_base_type(field)} {{ {inits} }}' if inits else f'new {_cs_base_type(field)}()'
+
+
+def _cs_property_values(field, value):
+    """(property name, initializer expression) pairs that give *field* its *value*."""
+    prop = pascal_case(field.name)
+    type_name = normalize_bytes_type(field.field_type)
+    if field.is_array:
+        capacity = field.size_option if field.size_option is not None else field.max_size
+        if type_name == "string":
+            data = b"".join(_cs_bytes_of(v).ljust(field.element_size, b"\x00") for v in value)
+            expr = _cs_bytes_expr(data, capacity * field.element_size)
+        elif field.is_enum:
+            expr = 'new byte[] { ' + ', '.join(
+                [str(field.type_ref.data[v][0]) for v in value] + ['0'] * (capacity - len(value))) + ' }'
+        elif _cs_is_struct_field(field):
+            rest = f'new {_cs_base_type(field)}()' if _cs_struct_has_defaults(field.type_ref) else 'null!'
+            items = [_cs_struct_expr(field, v) for v in value] + [rest] * (capacity - len(value))
+            expr = f'new {_cs_base_type(field)}[] {{ {", ".join(items)} }}'
+        else:
+            zero = 'false' if field.field_type == 'bool' else '0'
+            items = [_lit.cs_scalar(field.field_type, v) for v in value] + [zero] * (capacity - len(value))
+            expr = f'new {_cs_base_type(field)}[] {{ {", ".join(items)} }}'
+        if field.size_option is not None:
+            return [(prop, expr)]
+        return [(f'{prop}Count', str(len(value))), (f'{prop}Data', expr)]
+    if type_name == "string":
+        data = _cs_bytes_of(value)
+        if field.size_option is not None:
+            return [(prop, _cs_bytes_expr(data, field.size_option))]
+        return [(f'{prop}Length', str(len(data))), (f'{prop}Data', _cs_bytes_expr(data, field.max_size))]
+    if _cs_is_struct_field(field):
+        return [(prop, _cs_struct_expr(field, value))]
+    return [(prop, _cs_scalar_expr(field, value))]
+
+
+def _cs_struct_array_fill(field, capacity):
+    """Initializer filling every slot of a struct array with the struct's defaults."""
+    t = _cs_base_type(field)
+    return f'Array.ConvertAll(new {t}[{capacity}], _ => new {t}())'
 
 
 def _oneof_payload_cases(oneof):
@@ -293,42 +361,59 @@ class FieldCSharpGen():
             type_pkg = field.type_package if field.type_package else field.package
             base_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
 
+        # Schema default of an array/string/struct field: property initializers.
+        inits = dict(_cs_property_values(field, field.default)) if field.default is not None else {}
+
+        def count_init(prop):
+            return f' = {inits[prop]};' if prop in inits else ''
+
         # Handle arrays
         if field.is_array:
+            struct_fill = _cs_is_struct_field(field) and _cs_struct_has_defaults(field.type_ref)
             if type_name == "string":
                 # String arrays
                 if field.size_option is not None:
                     # Fixed string array — pre-allocate so Equals/GetHashCode never throw NRE
                     total_bytes = field.size_option * (field.element_size or 1)
-                    result += f'        public byte[] {var_name} {{ get; set; }} = new byte[{total_bytes}];  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
+                    init = inits.get(var_name, f'new byte[{total_bytes}]')
+                    result += f'        public byte[] {var_name} {{ get; set; }} = {init};  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
                 elif field.max_size is not None:
                     # Variable string array
                     count_type = "ushort" if field.max_size > 255 else "byte"
                     total_bytes = field.max_size * (field.element_size or 1)
-                    result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
+                    result += f'        public {count_type} {var_name}Count {{ get; set; }}{count_init(var_name + "Count")}\n'
                     result += f'        /// <summary>Backing data for the {field.name} string array.</summary>\n'
-                    result += f'        public byte[] {var_name}Data {{ get; set; }} = new byte[{total_bytes}];  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
+                    init = inits.get(var_name + 'Data', f'new byte[{total_bytes}]')
+                    result += f'        public byte[] {var_name}Data {{ get; set; }} = {init};  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
             else:
                 # Non-string arrays
                 if field.size_option is not None:
                     # Fixed array — pre-allocate so Equals/GetHashCode never throw NRE
                     if field.is_enum:
-                        result += f'        public byte[] {var_name} {{ get; set; }} = new byte[{field.size_option}];  // Fixed array of {base_type}: {field.size_option} elements\n'
+                        init = inits.get(var_name, f'new byte[{field.size_option}]')
+                        result += f'        public byte[] {var_name} {{ get; set; }} = {init};  // Fixed array of {base_type}: {field.size_option} elements\n'
                     else:
-                        result += f'        public {base_type}[] {var_name} {{ get; set; }} = new {base_type}[{field.size_option}];  // Fixed array: {field.size_option} elements\n'
+                        fallback = (_cs_struct_array_fill(field, field.size_option) if struct_fill
+                                    else f'new {base_type}[{field.size_option}]')
+                        init = inits.get(var_name, fallback)
+                        result += f'        public {base_type}[] {var_name} {{ get; set; }} = {init};  // Fixed array: {field.size_option} elements\n'
                 elif field.max_size is not None:
                     # Variable array — backing store pre-allocated to max capacity
                     count_type = "ushort" if field.max_size > 255 else "byte"
-                    result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
+                    result += f'        public {count_type} {var_name}Count {{ get; set; }}{count_init(var_name + "Count")}\n'
                     result += f'        /// <summary>Backing data for the {field.name} array.</summary>\n'
                     if field.is_enum:
-                        result += f'        public byte[] {var_name}Data {{ get; set; }} = new byte[{field.max_size}];  // Variable array of {base_type}: up to {field.max_size} elements\n'
+                        init = inits.get(var_name + 'Data', f'new byte[{field.max_size}]')
+                        result += f'        public byte[] {var_name}Data {{ get; set; }} = {init};  // Variable array of {base_type}: up to {field.max_size} elements\n'
                     else:
-                        result += f'        public {base_type}[] {var_name}Data {{ get; set; }} = new {base_type}[{field.max_size}];  // Variable array: up to {field.max_size} elements\n'
+                        fallback = (_cs_struct_array_fill(field, field.max_size) if struct_fill
+                                    else f'new {base_type}[{field.max_size}]')
+                        init = inits.get(var_name + 'Data', fallback)
+                        result += f'        public {base_type}[] {var_name}Data {{ get; set; }} = {init};  // Variable array: up to {field.max_size} elements\n'
 
         # Handle regular strings
         elif type_name == "string":
-            default_text = field.default.encode('utf-8') if field.default is not None else b""
+            default_text = _cs_bytes_of(field.default) if field.default is not None else b""
             if field.size_option is not None:
                 # Fixed string — pre-allocate, filling with the schema default if any
                 padded = _csharp_byte_array_literal(default_text.ljust(field.size_option, b"\x00"))
@@ -351,7 +436,9 @@ class FieldCSharpGen():
                 # schema default somewhere in its own fields, construct it (so
                 # those defaults apply) instead of leaving it null.
                 nested = field.type_ref
-                if nested is not None and getattr(nested, 'default_bytes', b"") != b"\x00" * getattr(nested, 'size', 0):
+                if field.default is not None:
+                    result += f'        public {base_type} {var_name} {{ get; set; }} = {inits[var_name]};\n'
+                elif nested is not None and getattr(nested, 'default_bytes', b"") != b"\x00" * getattr(nested, 'size', 0):
                     result += f'        public {base_type} {var_name} {{ get; set; }} = new {base_type}();\n'
                 else:
                     result += f'        public {base_type} {var_name} {{ get; set; }} = null!;\n'
@@ -420,6 +507,9 @@ class FieldCSharpGen():
                     total_data_size = field.size - (2 if field.max_size > 255 else 1)
                 else:
                     total_data_size = field.size
+                if not field.is_enum and field.field_type not in csharp_type_sizes:
+                    # Nested struct elements: the stride is the element struct's wire size.
+                    element_size = total_data_size // array_size
                 if field.size_option is not None:
                     # Fixed array
                     if field.is_enum:
@@ -1058,6 +1148,9 @@ class MessageCSharpGen():
         if msg.is_envelope:
             result += MessageCSharpGen._generate_envelope_methods(msg, structName, package)
 
+        if msg.id is not None:
+            result += MessageCSharpGen._generate_default_helpers(msg, structName)
+
         result += '    }\n'
 
         # Generate NonExtension companion class for messages with extension fields
@@ -1067,6 +1160,39 @@ class MessageCSharpGen():
 
         return result + '\n'
     
+    @staticmethod
+    def _generate_default_helpers(msg, structName):
+        """Defaults() / Reset() / IsDefault() / Is<Field>Default() (compared by encoding)."""
+        T = structName
+        r = '\n        /// <summary>A new message with every field at its schema default.</summary>\n'
+        r += f'        public static {T} Defaults() => new {T}();\n'
+        r += '\n        /// <summary>Set every field back to its schema default.</summary>\n'
+        r += '        public void Reset()\n        {\n'
+        r += f'            var fresh = new {T}();\n'
+        r += f'            foreach (var p in typeof({T}).GetProperties())\n'
+        r += '                if (p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)\n'
+        r += '                    p.SetValue(this, p.GetValue(fresh));\n'
+        r += '        }\n'
+        r += '\n        /// <summary>True when the message encodes exactly like one at its schema defaults.</summary>\n'
+        r += f'        public bool IsDefault() => Serialize().AsSpan().SequenceEqual(new {T}().Serialize());\n'
+        for field in msg.fields.values():
+            prop = pascal_case(field.name)
+            if field.is_array and field.max_size is not None:
+                props = [f'{prop}Count', f'{prop}Data']
+            elif (not field.is_array and normalize_bytes_type(field.field_type) == 'string'
+                  and field.max_size is not None):
+                props = [f'{prop}Length', f'{prop}Data']
+            else:
+                props = [prop]
+            r += f'\n        /// <summary>True when field {field.name} holds its schema default.</summary>\n'
+            r += f'        public bool Is{prop}Default()\n        {{\n'
+            r += f'            var probe = new {T}();\n'
+            for p in props:
+                r += f'            probe.{p} = {p};\n'
+            r += f'            return probe.Serialize().AsSpan().SequenceEqual(new {T}().Serialize());\n'
+            r += '        }\n'
+        return r
+
     @staticmethod
     def _generate_variable_methods(msg, structName, renamed_enums=None):
         """Generate SerializedSize, _SerializeVariable, and _DeserializeVariable methods for variable messages."""
@@ -1860,6 +1986,22 @@ class FileCSharpGen():
             content += f'    }}\n'
             content += footer
             files['PackageInfo.cs'] = content
+
+        consts = _lit.package_consts(package)
+        if consts:
+            content = header()
+            content += '    /// <summary>Constants declared in the schema.</summary>\n'
+            content += '    public static class Constants\n'
+            content += '    {\n'
+            for const in consts:
+                lines = _lit.doc_lines(const.comments) or [const.name]
+                content += '        /// <summary>' + ' '.join(lines).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') + '</summary>\n'
+                ctype = _lit.cs_type(const.const_type)
+                value = _lit.cs_scalar(const.const_type, const.value, const=True)
+                content += f'        public const {ctype} {_lit.const_name(const)} = {value};\n'
+            content += '    }\n'
+            content += footer
+            files['Constants.cs'] = content
 
         # One file per enum (in Enums/ subfolder)
         if package.enums:

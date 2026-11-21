@@ -121,7 +121,23 @@ typedef struct frame_msg_info {
   size_t frame_size; /* total bytes consumed by this frame (header + payload + footer);
                         set even on CRC failure so callers can skip past it */
   const struct frame_parser_diagnostics* diagnostics;
+  /* Header fields, for profiles (and system frames) that carry them. Appended last so
+   * positional initializers of the fields above stay valid. */
+  uint8_t sequence;
+  uint8_t system_id;
+  uint8_t component_id;
+  uint8_t package_id;
+  /* True for a system frame (payload type 9): msg_id is then a system message id
+   * (see sf_system_info.h), never an application message id. */
+  bool is_system;
 } frame_msg_info_t;
+
+/* An invalid result with every field zeroed (status FRAME_MSG_STATUS_NONE). */
+static inline frame_msg_info_t frame_msg_info_empty(void) {
+  frame_msg_info_t result;
+  memset(&result, 0, sizeof(result));
+  return result;
+}
 
 /**
  * Diagnostic counters for the accumulating_reader_t (stream mode).
@@ -140,8 +156,13 @@ typedef struct frame_msg_info {
  *                     Vital for detecting mismatched definitions on profiles
  *                     with an explicit length field.
  * cnt_seq_gaps:       Sequence-number gaps.  Only incremented on profiles that
- *                     carry a sequence field (e.g. network_accumulating_reader).
- *                     Indicates dropped packets.
+ *                     carry a sequence field (e.g. network_accumulating_reader),
+ *                     and on system frames (counted separately from application
+ *                     frames).  Indicates dropped packets.
+ * cnt_system_frames:  Valid system frames (payload type 9), delivered or hidden.
+ * cnt_system_rejected: Candidate system frames whose header named an unknown
+ *                     system message or an impossible length; the reader
+ *                     resynchronised at once instead of collecting a payload.
  */
 typedef struct frame_parser_diagnostics {
   uint32_t cnt_crc_failures;
@@ -149,5 +170,7 @@ typedef struct frame_parser_diagnostics {
   uint32_t cnt_failed_bytes;
   uint32_t cnt_len_errors;
   uint32_t cnt_seq_gaps;
+  uint32_t cnt_system_frames;
+  uint32_t cnt_system_rejected;
 } frame_parser_diagnostics_t;
 

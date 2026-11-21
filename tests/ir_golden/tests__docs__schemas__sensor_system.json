@@ -1,0 +1,205 @@
+{
+ "ir": {
+  "documentation_hash": "053c9049b02e7e730de80320617d4b4aff9cb4de4985e012b54151ae0ddbc6c5",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "SensorType": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "HUMIDITY": [
+        1,
+        []
+       ],
+       "PRESSURE": [
+        2,
+        []
+       ],
+       "TEMPERATURE": [
+        0,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "HUMIDITY": [],
+       "PRESSURE": [],
+       "TEMPERATURE": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "SensorType",
+      "package": "sensor_system",
+      "size": 1,
+      "source_file": "sensor_system.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "sensor_system.sf": [
+      "// Schema behind the enum examples in basic-usage/message-definitions.md; doc samples compile against it."
+     ]
+    },
+    "messages": {
+     "SensorReading": {
+      "_class": "Message",
+      "base_size": 5,
+      "comments": [],
+      "default_bytes": {
+       "hex": "0000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "type": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "SensorType",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "type",
+        "number": 1,
+        "package": "sensor_system",
+        "size": 1,
+        "size_option": null,
+        "source_file": "sensor_system.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "sensor_system",
+        "type_ref": {
+         "message": null,
+         "name": "SensorType",
+         "package": "sensor_system",
+         "ref": "enum"
+        }
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "sensor_system",
+        "size": 4,
+        "size_option": null,
+        "source_file": "sensor_system.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       24,
+       38
+      ],
+      "magic_bytes_override": null,
+      "min_size": 5,
+      "name": "SensorReading",
+      "oneofs": {},
+      "package": "sensor_system",
+      "size": 5,
+      "source_file": "sensor_system.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "sensor_system",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "927bea32b7a4da57b4e5d29f061f070ffbeab98e96af8fc170b863f880e49eba"
+ },
+ "outputs": {
+  "c/sensor_system.structframe.h": "2541a3c9514a4f6070e60359853d002ba95209ff81ccb08bad9073e608e8d794",
+  "c/sensor_system.tests.h": "8b8ce99c6307589ff7cca1c75d1a64f350364a47df17cae4223f78b00f58155e",
+  "c/structframe_all.h": "d74b0820ee52b9ca779390603a095ad1b10f12a75917cb7aee0d55795f569344",
+  "c/test_roundtrip_sensor_system.c": "62c1cfae1e10e5853940901ab7459f477f6ce8cb71e9e1f8cc159dfb13e3e156",
+  "cpp/sensor_system.structframe.hpp": "68a776ece037b2f504994360d8a38177a6102053ddb5f6d1ff218314bade5f26",
+  "cpp/sensor_system.tests.hpp": "0ccee410f3e0e15b9a876488c6631f3d96fb3d7e38c8ee6dd2b05ee33423696a",
+  "cpp/structframe_all.hpp": "ec213ec450eb3f5f6f8c2d3f27c15ad6e40373bdd5ac52c1ab18664d6f68fc1c",
+  "cpp/test_roundtrip_sensor_system.cpp": "743a61708246bfa2be543754e86413da6e99d26438be78f51aa364974ef13beb",
+  "csharp/SensorSystem/Constants.cs": "9a15602175d4c87acd230cf83000425e37ae551873dbfa46e73c6cb8327e4f21",
+  "csharp/SensorSystem/Enums/SensorType.cs": "ec9a609b94d150c64131a656b890674b01655b804553792b3a1e4f8c468282bf",
+  "csharp/SensorSystem/MessageDefinitions.cs": "2ebec5f16c442a133725e1b3c81e97c98bca83eb9df60cf4b27e7e31f43c671a",
+  "csharp/SensorSystem/Messages/SensorReading.cs": "3ccde1b224e4f832d8b2d64ebae6cc30050c68324e8df21f054964783f8a0de7",
+  "csharp/SensorSystem/SdkInterface.cs": "e0e825ab2b7be6f92f9b3d04dbc17ced0a800c3603fa62886758c96803fe0f38",
+  "csharp/SensorSystem/test_roundtrip_sensor_system.cs": "cc5e74cf500ba799666f1df2ce5d2a6599268b0ffbe787a9d7a443f96db334fd",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/schema.graphql": "02b3df54b092cf70a36158980ea7bc40c8084f52a14dfea491eff1bfaf5ab48b",
+  "gql/sensor_system.graphql": "f5ea2d375fa94841e2f313c447f1fef9e231645c7d9216f1583c94cb58e6a276",
+  "js/sensor-system.structframe.js": "7e4f745eb75e740dc8d4d51eaebc3c7b9d8c0e1400d2473f482fa18f73270c97",
+  "js/test_roundtrip_sensor_system.js": "5ed2db578ec1c3e2dd875ac57203e4c9bd7781e5970e705238f2eb7ac1d13c16",
+  "py/structframe/sensor_system.py": "d29f349a8a3c0f487ea34d145a1d158141dcc85c87a9a14756f5ef1350b1dd06",
+  "py/structframe/sensor_system_tests.py": "8bff90f492dfbaa2eccb3f54e473ce96fef9f61172a46631c26a8d11299003bb",
+  "py/test_roundtrip_sensor_system.py": "b3e4715695c5ae958a5c65456273b25209de248dd490351dba6e2b8a8322fa70",
+  "rust/Cargo.toml": "889d87050129167cdc5b4f7f262d4231ef9bc2f41983c24b30243518c315f5c9",
+  "rust/sensor_system.structframe.rs": "ea76a4cb73aa24b48b881b890b0b49192a084cf7ef9802fbb116b89afb5c0b2b",
+  "rust/test_roundtrip_sensor_system.rs": "68995f8ff4acf2062143d1cdd526e163c60e6c6599e5bc432c074f17e2ff21b3",
+  "sf_compile.json": "82cf5531e8762d0f5a6ca93491cbd1719b1b21d30578f4fc67caf5a3c2f11b64",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/sensor-system.structframe.ts": "00c2d395e2c8b3de45dbbfc1149825a8cef9b2db6762d6e6123f4678fdd3fa59",
+  "ts/test_roundtrip_sensor_system.ts": "b24fb65c71012e9961c3c082d2d546bd3aff8b5f923f553dcef7fc24dd3f2cce"
+ },
+ "outputs_no_packed": {
+  "c/sensor_system.structframe.h": "392f97ae113d3d425c3009331beb5fceb1c12366410ab77ba4eaf3e8a7f1b344",
+  "c/sensor_system.tests.h": "8b8ce99c6307589ff7cca1c75d1a64f350364a47df17cae4223f78b00f58155e",
+  "c/structframe_all.h": "d74b0820ee52b9ca779390603a095ad1b10f12a75917cb7aee0d55795f569344",
+  "c/test_roundtrip_sensor_system.c": "62c1cfae1e10e5853940901ab7459f477f6ce8cb71e9e1f8cc159dfb13e3e156",
+  "cpp/sensor_system.structframe.hpp": "444f3766e078895e606790b3b7cd2d73db2fb190bfee44006dcf76721cee1b35",
+  "cpp/sensor_system.tests.hpp": "0ccee410f3e0e15b9a876488c6631f3d96fb3d7e38c8ee6dd2b05ee33423696a",
+  "cpp/structframe_all.hpp": "ec213ec450eb3f5f6f8c2d3f27c15ad6e40373bdd5ac52c1ab18664d6f68fc1c",
+  "cpp/test_roundtrip_sensor_system.cpp": "743a61708246bfa2be543754e86413da6e99d26438be78f51aa364974ef13beb",
+  "csharp/SensorSystem/Constants.cs": "a73c1888f4d7ac3fb598a86352d52bd961df7cd0838ffde36debf7831c4c3ace",
+  "csharp/SensorSystem/Enums/SensorType.cs": "ec9a609b94d150c64131a656b890674b01655b804553792b3a1e4f8c468282bf",
+  "csharp/SensorSystem/MessageDefinitions.cs": "2ebec5f16c442a133725e1b3c81e97c98bca83eb9df60cf4b27e7e31f43c671a",
+  "csharp/SensorSystem/Messages/SensorReading.cs": "63abb4f7bbb68762769e03b159712f78a0abdf7b02421b52bbce43966946ee72",
+  "csharp/SensorSystem/SdkInterface.cs": "e0e825ab2b7be6f92f9b3d04dbc17ced0a800c3603fa62886758c96803fe0f38",
+  "csharp/SensorSystem/test_roundtrip_sensor_system.cs": "cc5e74cf500ba799666f1df2ce5d2a6599268b0ffbe787a9d7a443f96db334fd",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/schema.graphql": "02b3df54b092cf70a36158980ea7bc40c8084f52a14dfea491eff1bfaf5ab48b",
+  "gql/sensor_system.graphql": "f5ea2d375fa94841e2f313c447f1fef9e231645c7d9216f1583c94cb58e6a276",
+  "js/sensor-system.structframe.js": "0d68438660b210318d0a0142ce53320ecf33227c4ba61faf6b5825ba5450ead5",
+  "js/test_roundtrip_sensor_system.js": "5ed2db578ec1c3e2dd875ac57203e4c9bd7781e5970e705238f2eb7ac1d13c16",
+  "py/structframe/sensor_system.py": "1deb0ed0e7374436d6090dc04b79fa7e123f31b4721deecfbe9ca64fc5949d7c",
+  "py/structframe/sensor_system_tests.py": "8bff90f492dfbaa2eccb3f54e473ce96fef9f61172a46631c26a8d11299003bb",
+  "py/test_roundtrip_sensor_system.py": "b3e4715695c5ae958a5c65456273b25209de248dd490351dba6e2b8a8322fa70",
+  "rust/Cargo.toml": "889d87050129167cdc5b4f7f262d4231ef9bc2f41983c24b30243518c315f5c9",
+  "rust/sensor_system.structframe.rs": "bbf3bb4c0fc5f3ab44fc4639c6cc939668cfce15094e4bd83280eedcc02f8025",
+  "rust/test_roundtrip_sensor_system.rs": "68995f8ff4acf2062143d1cdd526e163c60e6c6599e5bc432c074f17e2ff21b3",
+  "sf_compile.json": "5686b242e99f32f0f00a3470a88dac7ae739745fe5a7ea4ae316a7f3be5af957",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/sensor-system.structframe.ts": "16ccdba1bfe5555713c69e45f0410eeee23d4a079b5b33245c7d861ad2bda226",
+  "ts/test_roundtrip_sensor_system.ts": "b24fb65c71012e9961c3c082d2d546bd3aff8b5f923f553dcef7fc24dd3f2cce"
+ },
+ "schema": "tests/docs/schemas/sensor_system.sf"
+}

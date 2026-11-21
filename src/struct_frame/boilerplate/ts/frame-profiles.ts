@@ -37,6 +37,7 @@ import {
     FrameParserDiagnostics,
 } from './frame-base';
 import { MessageBase } from './struct-base';
+import { supportsSystemFrames, systemProfileConfig, systemMessageInfo } from './system-frames';
 
 // =============================================================================
 // Profile Configuration Interface
@@ -118,9 +119,11 @@ export function profileOverhead(config: FrameProfileConfig): number {
 // =============================================================================
 
 /**
- * Create a profile configuration from header and payload configs.
+ * Create a profile configuration from header and payload configs (a custom profile:
+ * any header with any payload type). The payload type is folded into the start byte of a
+ * Tiny header or the second start byte of a Basic header.
  */
-function createProfileConfig(
+export function createProfileConfig(
     name: string,
     header: HeaderConfig,
     payload: PayloadConfig
@@ -373,10 +376,10 @@ export function parseFrameWithCrc(
 
     const crcStart = idx;
 
-    // Skip optional fields before length
-    if (payload.hasSeq) idx++;
-    if (payload.hasSysId) idx++;
-    if (payload.hasCompId) idx++;
+    // Optional fields before length
+    const sequence = payload.hasSeq ? buffer[idx++] : undefined;
+    const systemId = payload.hasSysId ? buffer[idx++] : undefined;
+    const componentId = payload.hasCompId ? buffer[idx++] : undefined;
 
     // Read length field
     let msgLen = 0;
@@ -391,8 +394,9 @@ export function parseFrameWithCrc(
 
     // Read message ID (16-bit: high byte is pkg_id when hasPkgId, low byte is msg_id)
     let msgId = 0;
-    if (payload.hasPkgId) {
-        msgId = buffer[idx++] << 8;  // pkg_id (high byte)
+    const packageId = payload.hasPkgId ? buffer[idx++] : undefined;
+    if (packageId !== undefined) {
+        msgId = packageId << 8;  // pkg_id (high byte)
     }
     msgId |= buffer[idx++];  // msg_id (low byte)
 
@@ -441,8 +445,80 @@ export function parseFrameWithCrc(
     result.msgLen = msgLen;
     result.msgData = buffer.subarray(headerSize, headerSize + msgLen);
     result.frameSize = totalSize;
+    if (sequence !== undefined) result.sequence = sequence;
+    if (systemId !== undefined) result.systemId = systemId;
+    if (componentId !== undefined) result.componentId = componentId;
+    if (packageId !== undefined) result.packageId = packageId;
 
     return result;
+}
+
+// =============================================================================
+// System-frame helpers shared by the readers
+// =============================================================================
+
+/** System-frame profile of `config`, or null when its header cannot carry system frames. */
+function systemProfileOf(config: FrameProfileConfig): FrameProfileConfig | null {
+    return supportsSystemFrames(config) ? systemProfileConfig(config) : null;
+}
+
+/**
+ * Index of the next byte in buf[begin:end] that can start a frame of `config` or a system
+ * frame, or -1.
+ */
+function findStart(buf: Uint8Array, config: FrameProfileConfig, sysCfg: FrameProfileConfig | null,
+                   begin: number, end: number): number {
+    const start1 = config.startByte1;
+    let nxt = buf.indexOf(start1, begin);
+    if (nxt >= end) nxt = -1;
+    if (sysCfg !== null && sysCfg.startByte1 !== start1) {
+        let alt = buf.indexOf(sysCfg.startByte1, begin);
+        if (alt >= end) alt = -1;
+        if (alt !== -1 && (nxt === -1 || alt < nxt)) nxt = alt;
+    }
+    return nxt;
+}
+
+/** True when `data` starts with the start bytes of a system frame. */
+function isSystemStart(sysCfg: FrameProfileConfig | null, data: Uint8Array): boolean {
+    if (sysCfg === null || data.length < 1 || data[0] !== sysCfg.startByte1) return false;
+    if (sysCfg.header.numStartBytes >= 2) {
+        return data.length >= 2 && data[1] === sysCfg.startByte2;
+    }
+    return true;
+}
+
+/**
+ * Check the header of a candidate system frame: true when the system message id is known
+ * and the length fits it, false when not, null while the header is incomplete.
+ */
+function systemHeaderOk(sysCfg: FrameProfileConfig, data: Uint8Array, len: number = data.length): boolean | null {
+    const hs = profileHeaderSize(sysCfg);
+    if (len < hs) return null;
+    const off = sysCfg.header.numStartBytes + 3;  // after SEQ, SYS, COMP
+    const length = data[off] | (data[off + 1] << 8);
+    const info = systemMessageInfo(data[hs - 1]);
+    return info !== undefined && (info.minSize ?? info.size) <= length && length <= info.size;
+}
+
+/** Parse a frame known to start with system start bytes. */
+function parseSystem(sysCfg: FrameProfileConfig, data: Uint8Array): FrameMsgInfo {
+    if (systemHeaderOk(sysCfg, data) === false) {
+        const rejected = createFrameMsgInfo();
+        rejected.status = FrameMsgStatus.WaitingForStart;
+        rejected.isSystem = true;
+        return rejected;
+    }
+    const result = parseFrameWithCrc(sysCfg, data, systemMessageInfo);
+    result.isSystem = true;
+    return result;
+}
+
+function emptyDiagnostics(): ParserDiagnostics {
+    return {
+        cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0,
+        cntSystemFrames: 0, cntSystemRejected: 0,
+    };
 }
 
 /**
@@ -535,24 +611,42 @@ export class BufferReader {
     private size: number;
     private _offset: number;
     private getMessageInfo?: GetMessageInfo;
+    private readonly sysCfg: FrameProfileConfig | null;
+    private readonly deliverSystemFrames: boolean;
 
+    /**
+     * @param deliverSystemFrames Return system frames (isSystem) instead of skipping them.
+     *     Profiles without start bytes never carry them.
+     */
     constructor(
         config: FrameProfileConfig,
         buffer: Uint8Array,
-        getMessageInfo?: GetMessageInfo
+        getMessageInfo?: GetMessageInfo,
+        deliverSystemFrames: boolean = false
     ) {
         this.config = config;
         this.buffer = buffer;
         this.size = buffer.length;
         this._offset = 0;
         this.getMessageInfo = getMessageInfo;
+        this.sysCfg = systemProfileOf(config);
+        this.deliverSystemFrames = deliverSystemFrames;
     }
 
     /**
      * Parse the next frame in the buffer.
      * Returns FrameMsgInfo with valid=true if successful, valid=false if no more frames.
+     * System frames are returned (isSystem) only with deliverSystemFrames.
      */
     next(): FrameMsgInfo {
+        for (;;) {
+            const result = this.nextFrame();
+            if (result.valid && result.isSystem && !this.deliverSystemFrames) continue;
+            return result;
+        }
+    }
+
+    private nextFrame(): FrameMsgInfo {
         if (this._offset >= this.size) {
             return createFrameMsgInfo();
         }
@@ -560,7 +654,9 @@ export class BufferReader {
         const remaining = this.buffer.subarray(this._offset);
         let result: FrameMsgInfo;
 
-        if (this.config.payload.hasCrc || this.config.payload.hasLength) {
+        if (isSystemStart(this.sysCfg, remaining)) {
+            result = parseSystem(this.sysCfg!, remaining);
+        } else if (this.config.payload.hasCrc || this.config.payload.hasLength) {
             result = parseFrameWithCrc(this.config, remaining, this.getMessageInfo);
         } else {
             if (!this.getMessageInfo) {
@@ -572,8 +668,7 @@ export class BufferReader {
         }
 
         if (result.valid) {
-            const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
-            this._offset += frameSize;
+            this._offset += result.frameSize!;
         } else if (result.status === FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
             // A complete frame failed CRC — skip it and continue on next call.
             this._offset += result.frameSize!;
@@ -582,8 +677,8 @@ export class BufferReader {
             // reporting SyncRecovery so tryNext() keeps advancing.
             const oldOffset = this._offset;
             if (this.config.header.numStartBytes >= 1) {
-                const nxt = this.buffer.indexOf(this.config.startByte1, this._offset + 1);
-                this._offset = (nxt !== -1 && nxt < this.size) ? nxt : this.size;
+                const nxt = findStart(this.buffer, this.config, this.sysCfg, this._offset + 1, this.size);
+                this._offset = nxt !== -1 ? nxt : this.size;
             } else {
                 // No start bytes (e.g. IPC profile): advance one byte and retry so a
                 // single unknown msg_id doesn't discard the rest of the buffer.
@@ -735,8 +830,13 @@ export enum AccumulatingReaderState {
  *                     Vital for detecting mismatched definitions on profiles
  *                     that carry an explicit length.
  * - cntSeqGaps:       Sequence-number gaps. Only incremented on profiles that
- *                     carry a sequence field (e.g. ProfileNetwork). Indicates
- *                     dropped packets.
+ *                     carry a sequence field (e.g. ProfileNetwork), and on
+ *                     system frames (counted separately from application frames).
+ *                     Indicates dropped packets.
+ * - cntSystemFrames:  Valid system frames (payload type 9), delivered or hidden.
+ * - cntSystemRejected: Candidate system frames (0x79 start) whose header named an
+ *                     unknown system message or an impossible length; the reader
+ *                     resynchronised at once instead of collecting a payload.
  */
 export type ParserDiagnostics = FrameParserDiagnostics;
 
@@ -797,10 +897,27 @@ export class AccumulatingReader {
     private _diagnostics: ParserDiagnostics;
     private _lastSeq: number | null;
 
+    // System frames (payload type 9) share the profile's header; their sequence numbers
+    // are counted separately from the application frames'.
+    private readonly deliverSystemFrames: boolean;
+    private readonly sysCfg: FrameProfileConfig | null;
+    private readonly sysStart1: number;
+    private readonly sysStart2: number;
+    private _lastSysSeq: number | null;
+    // Profile of the frame being collected in stream mode (application or system).
+    private cfg: FrameProfileConfig;
+    private cfgHeaderSize: number;
+    private cfgFooterSize: number;
+
+    /**
+     * @param deliverSystemFrames Return system frames (isSystem) instead of only counting
+     *     them (cntSystemFrames). Profiles without start bytes never carry system frames.
+     */
     constructor(
         config: FrameProfileConfig,
         getMessageInfo?: GetMessageInfo,
-        bufferSize: number = 1024
+        bufferSize: number = 1024,
+        deliverSystemFrames: boolean = false
     ) {
         this.config = config;
         this.getMessageInfo = getMessageInfo;
@@ -818,8 +935,37 @@ export class AccumulatingReader {
         this.currentSize = 0;
         this.currentOffset = 0;
 
-        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+        this._diagnostics = emptyDiagnostics();
         this._lastSeq = null;
+
+        this.deliverSystemFrames = deliverSystemFrames;
+        this.sysCfg = systemProfileOf(config);
+        this.sysStart1 = this.sysCfg ? this.sysCfg.startByte1 : -1;
+        this.sysStart2 = this.sysCfg ? this.sysCfg.startByte2 : -1;
+        this._lastSysSeq = null;
+        this.cfg = config;
+        this.cfgHeaderSize = this.headerSize;
+        this.cfgFooterSize = this.footerSize;
+    }
+
+    /** Collect the current stream-mode frame as a system or an application frame. */
+    private selectProfile(system: boolean): void {
+        this.cfg = system ? this.sysCfg! : this.config;
+        this.cfgHeaderSize = system ? profileHeaderSize(this.cfg) : this.headerSize;
+        this.cfgFooterSize = system ? profileFooterSize(this.cfg) : this.footerSize;
+    }
+
+    private countSystemFrame(result: FrameMsgInfo): void {
+        this._diagnostics.cntSystemFrames++;
+        const seq = result.sequence ?? 0;
+        if (this._lastSysSeq !== null && seq !== ((this._lastSysSeq + 1) & 0xFF)) {
+            this._diagnostics.cntSeqGaps++;
+        }
+        this._lastSysSeq = seq;
+    }
+
+    private findStart(buf: Uint8Array, begin: number, end: number): number {
+        return findStart(buf, this.config, this.sysCfg, begin, end);
     }
 
     // =========================================================================
@@ -851,8 +997,22 @@ export class AccumulatingReader {
 
     /**
      * Parse the next frame (buffer mode).
+     * System frames are returned (isSystem) only when the reader was created with
+     * deliverSystemFrames; otherwise they are counted and skipped.
      */
     next(): FrameMsgInfo {
+        for (;;) {
+            const result = this.nextFrame();
+            if (result.valid && result.isSystem) {
+                this.countSystemFrame(result);
+                if (!this.deliverSystemFrames) continue;
+                result.diagnostics = { ...this._diagnostics };
+            }
+            return result;
+        }
+    }
+
+    private nextFrame(): FrameMsgInfo {
         if (this._state !== AccumulatingReaderState.BUFFER_MODE) {
             return this.withDiagnostics(createFrameMsgInfo());
         }
@@ -880,7 +1040,7 @@ export class AccumulatingReader {
             if (result.valid) {
                 result.msgData = result.msgData.slice(); // own copy — internalBuffer is reused
                 this.recordFrameDiagnostics(this.internalBuffer, true);
-                const frameSize = this.headerSize + result.msgLen + this.footerSize;
+                const frameSize = result.frameSize!;
                 const bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
                 this.currentOffset = bytesFromCurrent;
 
@@ -915,8 +1075,11 @@ export class AccumulatingReader {
                 this.internalDataLen >= this.bufferSize ||
                 this.claimsOversizeFrame(internalBytes)) {
                 let discard = this.internalDataLen;
+                if (result.isSystem && result.status === FrameMsgStatus.WaitingForStart) {
+                    this._diagnostics.cntSystemRejected++;
+                }
                 if (this.config.header.numStartBytes >= 1) {
-                    const nxt = internalBytes.indexOf(this.config.startByte1, 1);
+                    const nxt = this.findStart(internalBytes, 1, internalBytes.length);
                     if (nxt !== -1) {
                         discard = nxt;
                     }
@@ -956,8 +1119,7 @@ export class AccumulatingReader {
 
         if (result.valid) {
             this.recordFrameDiagnostics(remaining, true);
-            const frameSize = this.headerSize + result.msgLen + this.footerSize;
-            this.currentOffset += frameSize;
+            this.currentOffset += result.frameSize!;
             return this.withDiagnostics(result);
         }
 
@@ -975,9 +1137,12 @@ export class AccumulatingReader {
             // Head byte is not a frame start — scan forward to the next start byte,
             // reporting SyncRecovery with frameSize=bytes skipped so tryNext() keeps draining.
             const oldOffset = this.currentOffset;
+            if (result.isSystem) {
+                this._diagnostics.cntSystemRejected++;
+            }
             if (this.config.header.numStartBytes >= 1) {
-                const nxt = this.currentBuffer.indexOf(this.config.startByte1, this.currentOffset + 1);
-                this.currentOffset = (nxt !== -1 && nxt < this.currentSize) ? nxt : this.currentSize;
+                const nxt = this.findStart(this.currentBuffer, this.currentOffset + 1, this.currentSize);
+                this.currentOffset = nxt !== -1 ? nxt : this.currentSize;
             } else {
                 // No start bytes (e.g. IPC profile): advance one byte and retry so a
                 // single unknown msg_id doesn't discard the rest of the buffer.
@@ -996,8 +1161,8 @@ export class AccumulatingReader {
         // resync past its start byte now rather than buffering good data behind it.
         if (this.config.header.numStartBytes >= 1 && this.claimsOversizeFrame(remaining)) {
             const oldOffset = this.currentOffset;
-            const nxt = this.currentBuffer.indexOf(this.config.startByte1, this.currentOffset + 1);
-            this.currentOffset = (nxt !== -1 && nxt < this.currentSize) ? nxt : this.currentSize;
+            const nxt = this.findStart(this.currentBuffer, this.currentOffset + 1, this.currentSize);
+            this.currentOffset = nxt !== -1 ? nxt : this.currentSize;
             const skipped = this.currentOffset - oldOffset;
             this._diagnostics.cntFailedBytes += skipped;
             this._diagnostics.cntSyncRecoveries++;
@@ -1042,8 +1207,23 @@ export class AccumulatingReader {
 
     /**
      * Push a single byte for parsing (stream mode).
+     * System frames are returned (isSystem) only with deliverSystemFrames.
      */
     pushByte(byte: number): FrameMsgInfo {
+        const result = this.pushByteInner(byte);
+        if (result.valid && result.isSystem) {
+            this.countSystemFrame(result);
+            if (!this.deliverSystemFrames) {
+                const hidden = createFrameMsgInfo();
+                hidden.status = FrameMsgStatus.WaitingForStart;
+                return this.withDiagnostics(hidden);
+            }
+            result.diagnostics = { ...this._diagnostics };
+        }
+        return result;
+    }
+
+    private pushByteInner(byte: number): FrameMsgInfo {
         // Initialize state on first byte if idle
         if (this._state === AccumulatingReaderState.IDLE || this._state === AccumulatingReaderState.BUFFER_MODE) {
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
@@ -1077,9 +1257,13 @@ export class AccumulatingReader {
                 this._state = AccumulatingReaderState.COLLECTING_HEADER;
             }
         } else {
-            if (byte === this.config.startByte1) {
+            const isUser = byte === this.config.startByte1;
+            if (isUser || byte === this.sysStart1) {
                 this.internalBuffer[0] = byte;
                 this.internalDataLen = 1;
+                // A Basic header shares its first byte with system frames: the second
+                // byte decides. A Tiny header's only byte decides now.
+                this.selectProfile(!isUser);
 
                 if (this.config.header.numStartBytes === 1) {
                     this._state = AccumulatingReaderState.COLLECTING_HEADER;
@@ -1096,8 +1280,9 @@ export class AccumulatingReader {
     }
 
     private handleLookingForStart2(byte: number): FrameMsgInfo {
-        if (byte === this.config.startByte2) {
+        if (byte === this.config.startByte2 || byte === this.sysStart2) {
             this.internalBuffer[this.internalDataLen++] = byte;
+            this.selectProfile(byte !== this.config.startByte2);
             this._state = AccumulatingReaderState.COLLECTING_HEADER;
         } else if (byte === this.config.startByte1) {
             this.internalBuffer[0] = byte;
@@ -1126,11 +1311,22 @@ export class AccumulatingReader {
         }
 
         this.internalBuffer[this.internalDataLen++] = byte;
-        const headerSize = this.headerSize;
-        const footerSize = this.footerSize;
+        const cfg = this.cfg;
+        const headerSize = this.cfgHeaderSize;
+        const footerSize = this.cfgFooterSize;
 
         if (this.internalDataLen >= headerSize) {
-            if (!this.config.payload.hasLength && !this.config.payload.hasCrc) {
+            if (cfg !== this.config && !systemHeaderOk(cfg, this.internalBuffer, this.internalDataLen)) {
+                // Not a system frame after all: resync without collecting a payload.
+                this._diagnostics.cntSystemRejected++;
+                this._diagnostics.cntFailedBytes += this.internalDataLen;
+                this._diagnostics.cntSyncRecoveries++;
+                this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                this.internalDataLen = 0;
+                this.selectProfile(false);
+                const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
+            }
+            if (!cfg.payload.hasLength && !cfg.payload.hasCrc) {
                 const msgId = this.internalBuffer[headerSize - 1];
                 if (this.getMessageInfo) {
                     const info = this.getMessageInfo(msgId);
@@ -1174,14 +1370,14 @@ export class AccumulatingReader {
                     const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
                 }
             } else {
-                let lenOffset = this.config.header.numStartBytes;
-                if (this.config.payload.hasSeq) lenOffset++;
-                if (this.config.payload.hasSysId) lenOffset++;
-                if (this.config.payload.hasCompId) lenOffset++;
+                let lenOffset = cfg.header.numStartBytes;
+                if (cfg.payload.hasSeq) lenOffset++;
+                if (cfg.payload.hasSysId) lenOffset++;
+                if (cfg.payload.hasCompId) lenOffset++;
 
                 let payloadLen = 0;
-                if (this.config.payload.hasLength) {
-                    if (this.config.payload.lengthBytes === 1) {
+                if (cfg.payload.hasLength) {
+                    if (cfg.payload.lengthBytes === 1) {
                         payloadLen = this.internalBuffer[lenOffset];
                     } else {
                         payloadLen = this.internalBuffer[lenOffset] | (this.internalBuffer[lenOffset + 1] << 8);
@@ -1189,7 +1385,7 @@ export class AccumulatingReader {
                 }
 
                 // Check for length mismatch against expected message struct size
-                if (this.config.payload.hasLength && this.getMessageInfo) {
+                if (cfg === this.config && cfg.payload.hasLength && this.getMessageInfo) {
                     let fullMsgId = 0;
                     if (this.config.payload.hasPkgId) {
                         fullMsgId = (this.internalBuffer[headerSize - 2] << 8);
@@ -1302,12 +1498,15 @@ export class AccumulatingReader {
         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
         this.internalDataLen = 0;
         this.expectedFrameSize = 0;
+        const wasSystem = this.cfg !== this.config;
+        this.selectProfile(false);
 
         if (result.valid) {
             result.msgData = result.msgData.slice(); // own copy — internalBuffer is reused
             // Check for sequence gap on profiles that carry a sequence number
-            if (this.config.payload.hasSeq) {
-                const seq = this.internalBuffer[this.config.header.numStartBytes];
+            // (system frames are counted by countSystemFrame)
+            if (!result.isSystem && this.config.payload.hasSeq) {
+                const seq = result.sequence ?? 0;
                 if (this._lastSeq !== null) {
                     const expectedSeq = (this._lastSeq + 1) & 0xFF;
                     if (seq !== expectedSeq) {
@@ -1317,7 +1516,7 @@ export class AccumulatingReader {
                 this._lastSeq = seq;
             }
         } else {
-            if (this.config.payload.hasCrc) {
+            if (this.config.payload.hasCrc || wasSystem) {
                 this._diagnostics.cntCrcFailures++;
                 result.status = FrameMsgStatus.CrcFailure;
             } else {
@@ -1336,17 +1535,22 @@ export class AccumulatingReader {
      * a claim.
      */
     private claimsOversizeFrame(data: Uint8Array): boolean {
-        const payload = this.config.payload;
-        if (!payload.hasLength || data.length < this.headerSize) return false;
-        let off = this.config.header.numStartBytes;
+        const cfg = isSystemStart(this.sysCfg, data) ? this.sysCfg! : this.config;
+        const payload = cfg.payload;
+        const headerSize = profileHeaderSize(cfg);
+        if (!payload.hasLength || data.length < headerSize) return false;
+        let off = cfg.header.numStartBytes;
         if (payload.hasSeq) off++;
         if (payload.hasSysId) off++;
         if (payload.hasCompId) off++;
         const payloadLen = payload.lengthBytes === 1 ? data[off] : data[off] | (data[off + 1] << 8);
-        return this.headerSize + this.footerSize + payloadLen > this.bufferSize;
+        return headerSize + profileFooterSize(cfg) + payloadLen > this.bufferSize;
     }
 
     private parseBuffer(buffer: Uint8Array): FrameMsgInfo {
+        if (isSystemStart(this.sysCfg, buffer)) {
+            return parseSystem(this.sysCfg!, buffer);
+        }
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
             return parseFrameWithCrc(this.config, buffer, this.getMessageInfo);
         } else {
@@ -1392,6 +1596,8 @@ export class AccumulatingReader {
         this.currentSize = 0;
         this.currentOffset = 0;
         this._lastSeq = null;
+        this._lastSysSeq = null;
+        this.selectProfile(false);
     }
 
     /** Get a snapshot of the current diagnostic counters. */
@@ -1401,7 +1607,7 @@ export class AccumulatingReader {
 
     /** Reset all diagnostic counters to zero. */
     resetDiagnostics(): void {
-        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+        this._diagnostics = emptyDiagnostics();
     }
 
     private withDiagnostics(result: FrameMsgInfo): FrameMsgInfo {
@@ -1417,6 +1623,9 @@ export class AccumulatingReader {
      * `frame` is the raw frame bytes (start bytes included).
      */
     private recordFrameDiagnostics(frame: Uint8Array, valid: boolean): void {
+        if (isSystemStart(this.sysCfg, frame)) {
+            return;  // counted by countSystemFrame; the header was already validated
+        }
         const config = this.config;
         if (config.payload.hasLength && this.getMessageInfo) {
             let lenOffset = config.header.numStartBytes;

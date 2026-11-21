@@ -79,6 +79,11 @@ def _drive(data: bytes) -> None:
         for _ in range(256):
             if reader.try_next() is None:
                 break
+        # Stream mode (its own state machine, including the system-frame header check),
+        # with system frames delivered.
+        stream = AccumulatingReader(cfg, get_message_info=_stub_info, deliver_system_frames=True)
+        for byte in data:
+            stream.push_byte(byte)
 
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802  (atheris convention)

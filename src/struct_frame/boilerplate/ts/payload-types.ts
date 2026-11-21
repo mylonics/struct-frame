@@ -15,10 +15,11 @@ export enum PayloadType {
     SYS_COMP = 5,                     // [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
     SEQ = 6,                          // [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
     MULTI_SYSTEM_STREAM = 7,          // [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
-    EXTENDED_MULTI_SYSTEM_STREAM = 8  // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    EXTENDED_MULTI_SYSTEM_STREAM = 8, // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    SYSTEM = 9                        // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [SYS_MSG_ID] [PACKET] [CRC1] [CRC2] (system frames)
 }
 
-/** Maximum payload type value (for range checking) */
+/** Maximum application payload type value (for range checking); SYSTEM is reserved. */
 export const MAX_PAYLOAD_TYPE_VALUE = 8;
 
 /**
@@ -171,4 +172,20 @@ export const PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG: PayloadConfig = {
     hasSysId: true,
     hasCompId: true,
     hasPkgId: true,
+};
+
+/**
+ * System frames: struct-frame's own messages (heartbeat, ping, link tests, RPC).
+ * Carried after a Basic or Tiny header with payload type 9 (start byte 0x79).
+ */
+export const PAYLOAD_SYSTEM_CONFIG: PayloadConfig = {
+    payloadType: PayloadType.SYSTEM,
+    hasCrc: true,
+    crcBytes: 2,
+    hasLength: true,
+    lengthBytes: 2,
+    hasSeq: true,
+    hasSysId: true,
+    hasCompId: true,
+    hasPkgId: false,
 };

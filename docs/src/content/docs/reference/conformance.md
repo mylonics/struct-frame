@@ -65,13 +65,13 @@ order, with no per-field tag or length prefix.
 | `int32` / `uint32` / `float` | 4 bytes, little-endian (IEEE-754 for `float`)  |
 | `int64` / `uint64` / `double` | 8 bytes, little-endian (IEEE-754 for `double`) |
 | `enum`         | Stored as the underlying integer type (default `int32`)      |
-| Fixed `string size = N`    | Exactly N bytes, NUL-terminated, NUL-padded      |
-| Variable `string max_size = N` | 1 length byte (≤ N), then N bytes (length-prefixed; trailing bytes are unspecified) |
-| Fixed array `size = N`     | N elements packed back-to-back                   |
-| Bounded array `max_size = N` | 1 count byte (≤ N), then N elements              |
+| `fixed_string<N>` / `fixed_bytes<N>` | Exactly N bytes, NUL-padded           |
+| `string<N>` / `bytes<N>` | 1 length byte (≤ N), then N bytes (length-prefixed; trailing bytes are unspecified) |
+| `array<T, N>`              | N elements packed back-to-back                   |
+| `vector<T, N>`             | 1 count byte (≤ N), then N elements              |
 | Nested message | The nested struct, packed inline (no header, no CRC)        |
-| `oneof` (envelope) | A 1-byte discriminator followed by the selected variant. The discriminator is the *field number* of the active variant (default), or the *msgid* of the active variant when `option discriminator = msgid`, or absent when `option discriminator = none` (in which case the active variant is implied by message length / context). |
-| Extension fields (`option extensions_start = N`) | Encoded after the base fields, in declaration order. Older parsers MAY truncate the payload to `base_size` and still decode successfully (see [§ 5](#5-wire-evolution)). |
+| `oneof` (envelope) | A 1-byte discriminator followed by the selected variant. The discriminator is the *field number* of the active variant (default), or the *msgid* of the active variant with `[discriminator = msgid]`, or absent with `[discriminator = none]` (in which case the active variant is implied by message length / context). |
+| Extension fields (an `extensions { }` block) | Encoded after the base fields, in declaration order. Older parsers MAY truncate the payload to `base_size` and still decode successfully (see [§ 5](#5-wire-evolution)). |
 
 Multi-byte integers are little-endian on the wire in *all* reference implementations.
 Structs are packed with no implicit padding; the generator emits
@@ -95,9 +95,8 @@ not expose the byte-order macros.
   high byte of the message's full 16-bit ID: `PKG_ID = (MSG_ID >> 8) & 0xFF`.
   This matches the C++ reference encoder and is required of any conforming
   implementation.
-* `option pkgid = N;` on a package sets the high byte; `option msgid = M;`
-  on a message sets the low byte. A message's effective 16-bit id is
-  `(pkgid << 8) | msgid`.
+* `package name @N;` sets the high byte; `message Name @M { … }` sets the
+  low byte. A message's effective 16-bit id is `(pkgid << 8) | msgid`.
 
 ## 4. Checksum
 
@@ -123,7 +122,7 @@ but not including `CRC1`**: that is, the length field(s), any routing
 fields (`SEQ`, `SYS_ID`, `COMP_ID`), `PKG_ID`, `MSG_ID`, and the entire
 payload.
 
-**Extension-aware variant.** When the message has `option extensions_start`,
+**Extension-aware variant.** When the message has an `extensions { }` block,
 the CRC is split: Fletcher is computed over the base region (header + base
 payload), the two magic bytes are mixed in, *then* Fletcher continues over
 the extension bytes:
@@ -186,8 +185,8 @@ Compatibility rules for adding fields to an existing message:
 1. **Appending base fields is a breaking change** — it changes the magic and
    therefore the CRC. Old parsers will reject new frames; new parsers will
    reject old frames.
-2. **Appending extension fields** (under `option extensions_start = N;` or
-   inside a `// Extension::` block on a oneof) is **non-breaking**:
+2. **Appending extension fields** (inside the message's or a oneof's
+   `extensions { }` block) is **non-breaking**:
    * Magic bytes are computed from base fields only, so they are unchanged.
    * The extension-aware CRC mixes magic between base and extension bytes,
      so old (extension-unaware) parsers that truncate to `base_size` still
@@ -239,11 +238,12 @@ To call an implementation "struct-frame conformant" it MUST:
 | 2 | Compute Fletcher-16 with per-message magic exactly as in [§ 4](#4-checksum) | `tests/test_magic_bytes.py` |
 | 3 | Derive per-message magic bytes using the algorithm in [§ 4](#4-checksum) | `tests/test_magic_bytes.py` |
 | 4 | Reject every scenario in [`tests/NEGATIVE_TESTS.md`](https://github.com/mylonics/struct-frame/blob/main/tests/NEGATIVE_TESTS.md) | per-language `test_negative` |
-| 5 | Handle `option extensions_start` per [§ 5](#5-wire-evolution) (base/extension CRC split, magic from base only) | `tests/test_wire_evolution.py` |
+| 5 | Handle `extensions { }` blocks per [§ 5](#5-wire-evolution) (base/extension CRC split, magic from base only) | `tests/test_wire_evolution.py` |
 | 6 | Derive `PKG_ID` for Bulk/Network as the high byte of the 16-bit msgid | per-language `test_extended` |
-| 7 | Truncate variable-length arrays correctly when `option variable = true` | per-language `test_variable_flag` |
+| 7 | Truncate variable-length arrays correctly for `[variable]` messages | per-language `test_variable_flag` |
 | 8 | Cross-decode files produced by every other reference implementation | `tests/run_tests.py` cross-platform matrix |
 | 9 | Produce byte-deterministic generator output (no timestamps, no hash-set ordering) | `tests/check_determinism.py` |
+| 10 | Carry and demultiplex system frames per [§ 9](#9-system-frames) (header validation, hidden by default, separate sequence space) | `tests/test_system_frames.py`, `tests/test_system_frames_runtimes.py`, `tests/test_stream_cross_lang.py` |
 
 Each row of the table corresponds to a real test (or set of tests) in the
 repository — there is no "informal" conformance.
@@ -262,3 +262,119 @@ If a future change deliberately alters anything specified in this document:
    capability) to `tests/golden/legacy/` and document a migration path.
 
 Wire-format changes outside this process MUST be treated as bugs.
+
+## 9. System frames
+
+A *system frame* carries one of struct-frame's own messages (heartbeat, ping,
+link tests, RPC envelopes) on the same link as the application's frames. The
+messages are declared in the built-in schema
+[`sf_system.sf`](https://github.com/mylonics/struct-frame/blob/main/src/struct_frame/builtin/sf_system.sf),
+whose package name `sf_system` is reserved.
+
+### 9.1 Layout
+
+A system frame uses payload type **9**, so its payload-type start byte is
+**`0x79`**. It travels after the header of the profile in use, and only
+headers that encode the payload type can carry it:
+
+| Header | System frame |
+|--------|--------------|
+| Basic (`Standard`, `Bulk`, `Network`) | `[0x90] [0x79] [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [SYS_MSG_ID] [PAYLOAD…] [CRC1] [CRC2]` |
+| Tiny (`Sensor`) | `[0x79] [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [SYS_MSG_ID] [PAYLOAD…] [CRC1] [CRC2]` |
+| None (`IPC`), UBX, MAVLink | Not supported: a `0x79` byte is ordinary data. |
+
+The layout after the start bytes is the same for every profile, whatever the
+profile's own payload type is (a `Sensor` link has no CRC on its application
+frames, but its system frames do).
+
+* `SEQ` — the sender's system-frame sequence number. It is a separate sequence
+  space from the application frames'.
+* `SYS`, `COMP` — the sender's system and component ids.
+* `LEN` — little-endian uint16, the length of `PAYLOAD`.
+* `SYS_MSG_ID` — a system message id. System ids are their own id space and
+  never collide with application ids: `0x01`–`0x7F` struct-frame core,
+  `0x80`–`0xEF` reserved, `0xF0`–`0xFF` vendor use.
+* `PAYLOAD` — the message's fixed fields (encoded as in [§ 2](#2-payload-encoding)),
+  followed for some messages by a raw **tail** of `LEN − fixed size` bytes
+  (at most `MAX_TAIL` = 1024).
+* `CRC1`, `CRC2` — Fletcher-16 over `SEQ` … end of `PAYLOAD` with the system
+  message's magic bytes mixed in after the data ([§ 4](#4-checksum)). There is
+  no extension split.
+
+| `SYS_MSG_ID` | Message | Fixed size | Magic | Tail |
+|---|---|---|---|---|
+| `0x01` | Heartbeat | 18 | 58, 250 | no |
+| `0x02` | LinkStats | 40 | 88, 134 | no |
+| `0x10` | Ping | 14 | 28, 82 | yes |
+| `0x11` | Pong | 14 | 25, 56 | yes |
+| `0x20` | LinkTestStart | 20 | 70, 72 | no |
+| `0x21` | LinkTestAck | 4 | 11, 22 | no |
+| `0x22` | LinkTestData | 5 | 9, 15 | yes |
+| `0x23` | LinkTestStop | 1 | 2, 2 | no |
+| `0x24` | LinkTestReport | 41 | 107, 39 | no |
+| `0x30` | RpcRequest | 8 | 31, 99 | yes |
+| `0x31` | RpcResponse | 7 | 24, 68 | yes |
+
+### 9.2 Reader behaviour
+
+A conforming reader for a Basic or Tiny profile MUST:
+
+1. **Recognise** a frame that starts with the system start bytes (`90 79` or
+   `79`) as a system-frame candidate, and look for both the application start
+   byte and the system start byte when it resynchronises.
+2. **Validate the header before collecting the payload.** If `SYS_MSG_ID` is
+   unknown, or `LEN` is below the message's fixed size or above its fixed size
+   plus the largest tail it may take (zero for messages without a tail), the
+   candidate is rejected: count it in `cnt_system_rejected` and resynchronise
+   at once. A buffer-mode reader resumes scanning at the byte after the start
+   byte, so a stray `0x79` costs nothing. A byte-by-byte reader that discards
+   the rejected header bytes may lose only the frames that start inside that
+   header (7 bytes after a Tiny start, 8 after a Basic one).
+3. **Verify the CRC** with the system message's magic; a mismatch counts in
+   `cnt_crc_failures` like any CRC failure.
+4. **Hide system frames by default.** A valid system frame is counted in
+   `cnt_system_frames` and not returned, so application code that only knows
+   application message ids never sees one. When the application opts in
+   (`deliver_system_frames` / `DeliverSystemFrames` /
+   `set_deliver_system_frames`), system frames are returned flagged
+   `is_system`, with `msg_id` set to the system message id.
+5. **Track system sequence numbers separately**: a gap in the system-frame
+   `SEQ` counts in `cnt_seq_gaps`, as a gap in the application sequence does,
+   but neither stream's numbers affect the other's.
+
+C and C++ readers can compile the support out with `SF_DISABLE_SYSTEM_FRAMES`;
+`0x79` is then ordinary data.
+
+### 9.3 Test vectors
+
+`tests/test_system_frames.py` builds these frames from the description above
+(no runtime code), and every runtime must encode and decode them byte for byte
+(`tests/test_system_frames_runtimes.py`):
+
+| Profile | Message | SEQ, SYS, COMP | Tail | Frame |
+|---|---|---|---|---|
+| Standard | LinkTestStop{test_id=3} | 0, 0, 0 | — | `90 79 00 00 00 01 00 23 03 2B A1` |
+| Standard | Heartbeat{uptime_ms=1234, counter=5, wire_hash=0xDEADBEEF, interval_ms=1000, protocol_version=1} | 7, 4, 5 | — | `90 79 07 04 05 12 00 01 D2 04 00 00 05 00 00 00 EF BE AD DE E8 03 01 00 00 00 56 00` |
+| Sensor | Heartbeat{uptime_ms=0xFFFFFFFF, counter=1, interval_ms=250, protocol_version=1, node_type=2, state=1, flags=6} | 0, 1, 2 | — | `79 00 01 02 12 00 01 FF FF FF FF 01 00 00 00 00 00 00 00 FA 00 01 02 01 06 4B 26` |
+| Standard | Ping{t_send_us=0x0102030405060708, seq=9, target_sys=3, target_comp=4} | 255, 6, 7 | `AA BB CC` | `90 79 FF 06 07 11 00 10 08 07 06 05 04 03 02 01 09 00 00 00 03 04 AA BB CC 00 E2` |
+| Sensor | RpcRequest{call_id=0x1234, payload_id=0x0102, payload_magic1=0x11, payload_magic2=0x22, target_sys=1, target_comp=2} | 1, 2, 3 | `00 01 … 09` | `79 01 02 03 12 00 30 34 12 02 01 11 22 01 02 00 01 02 03 04 05 06 07 08 09 76 93` |
+
+Mixed streams of application frames, system frames, garbage and stray system
+headers are decoded by every runtime and compared, hidden and delivered, at
+several chunk sizes in `tests/test_stream_cross_lang.py`.
+
+### 9.4 Wire hash
+
+Every generated package carries a `WIRE_HASH` constant (`uint32`), a fingerprint of its
+base wire contract that heartbeats report so nodes can notice a peer built from another
+schema. It is FNV-1a-32 (offset basis `0x811C9DC5`, prime `0x01000193`) over:
+
+1. the package id (one byte, 0 when the package has none), then
+2. for every message with an id, in effective-id order, the little-endian record
+   `effective id (u16), magic1 (u8), magic2 (u8), base size (u32), minimum size (u32),
+   variable flag (u8)`, where the minimum size equals the base size for fixed messages.
+
+Renaming, documentation, id-less structs and extension fields leave it unchanged; any
+change to ids, magic bytes, base or minimum sizes, or the variable flag changes it. The
+name `WIRE_HASH` is therefore reserved for constants. The built-in `sf_system` package's
+value is `2865079104` (`tests/test_wire_hash.py`).

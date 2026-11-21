@@ -142,6 +142,28 @@ Status/diagnostics scenarios (all 7 languages):
 41. **Status: SYNC_RECOVERY on forced resync** – `pushByte`/`push_byte` reports `SYNC_RECOVERY` when the parser is forced to discard bytes and resync
 42. **Status: WAITING_FOR_START before first byte** – `pushByte`/`push_byte` reports `WAITING_FOR_START` before any start byte has been seen
 
+### System-frame scenarios (all 7 languages)
+
+System frames (payload type 9, start byte `0x79`; see conformance § 9) are checked with
+pytest rather than in the per-language `test_negative` programs: the Python runtime in
+`tests/test_system_frames.py`, and every runtime against it through the stream drivers in
+`tests/test_stream_cross_lang.py` (mixed streams and the `tests/golden/*system*` files,
+hidden and delivered, at several chunk sizes) and the known-answer programs in
+`tests/test_system_frames_runtimes.py`.
+
+| Scenario | Verified by |
+|---|---|
+| Bad system CRC is a CRC failure (`cnt_crc_failures`) | `test_corrupt_system_frame_is_a_crc_failure`; corrupted system frames in `corpus.system_stream` |
+| Unknown system message id rejected before its payload (`cnt_system_rejected`) | `test_bad_system_header_is_rejected_before_its_payload[unknown_id]`; stray headers in `corpus.system_stream` |
+| Length too long / too short / oversized rejected | `test_bad_system_header_is_rejected_before_its_payload[too_long, too_short, oversized]` |
+| Hidden by default, counted in `cnt_system_frames` | `test_system_frames_between_application_frames[hidden]`; `test_system_frames_in_streams` (hidden) |
+| Delivered on request, flagged `is_system` | `test_system_frames_between_application_frames[delivered]`; `test_*_runtime_system_frames` |
+| Separate sequence space (gaps counted once, application sequence unaffected) | `test_system_and_application_sequence_numbers_are_separate`; skipped system sequence numbers in `corpus.system_stream` |
+| Headerless profile (IPC) treats `0x79` as data | `test_headerless_profile_treats_0x79_as_an_application_id` |
+| Frame split across buffers / byte-at-a-time | `chunk_1`/`chunk_3`/`chunk_7`/`stream` modes; chunks 1/13/512 in `test_system_frames_in_streams` |
+| False `0x79` start loses only frames inside its header window | `test_false_system_start_loses_only_frames_inside_its_header_window` |
+| Compiled out (`SF_DISABLE_SYSTEM_FRAMES`) | `test_c_runtime_compiles_without_system_frames` |
+
 ### `tryNext` Contract (Unified)
 
 - `tryNext` returns progress items while forward progress is possible:

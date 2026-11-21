@@ -449,6 +449,41 @@ SECTIONS = [
                     "for all seven targets."
                 ),
             },
+            {
+                "header": "Feature",
+                "columns": LANGS + ["Notes"],
+                "lang_cols": LANGS,
+                "subtitle": "3.4 System Frames (payload type 9)",
+                "intro": (
+                    "struct-frame's own messages (`sf_system.sf`) after a Basic or Tiny "
+                    "header; see conformance § 9."
+                ),
+                "rows": [
+                    _full("Known-answer frames (encode, Basic and Tiny headers)", "✅",
+                          "Spec encoder + Python in `tests/test_system_frames.py`; the other "
+                          "runtimes in `tests/test_system_frames_runtimes.py` (TS through the "
+                          "compiled JS)"),
+                    _full("Byte-at-a-time decode with delivery", "✅",
+                          "`tests/test_system_frames_runtimes.py`"),
+                    _full("Hidden by default / delivered on request, mixed streams", "✅",
+                          "`test_system_frames_in_streams` in `tests/test_stream_cross_lang.py` "
+                          "(chunks 1/13/512, garbage, stray headers, CRC failures, sequence gaps)"),
+                    _full("Header rejection, CRC failure, separate sequence space", "✅",
+                          "Counters compared across runtimes in `tests/test_stream_cross_lang.py`; "
+                          "every case in `tests/test_system_frames.py`"),
+                    _full("Golden files (`tests/golden/*system*`)", "✅",
+                          "`tests/check_golden.py`; decoded by every runtime in "
+                          "`test_system_frame_goldens_decode_everywhere`"),
+                    _row("Compile-time opt-out (`SF_DISABLE_SYSTEM_FRAMES`)",
+                         {"C": "✅", "C++": "✅", "Python": "N/A", "TS": "N/A",
+                          "JS": "N/A", "C#": "N/A", "Rust": "N/A"},
+                         "`test_c_runtime_compiles_without_system_frames`, "
+                         "`test_cpp_runtime_compiles_without_system_frames`"),
+                    _full("Built-in code in sync with `sf_system.sf`", "✅",
+                          "`tests/test_builtin_sync.py` (`python -m struct_frame.builtin --check`, "
+                          "field names, tail lists, info tables, Wireshark table)"),
+                ],
+            },
         ],
     },
     {

@@ -1,4 +1,6 @@
-// Stream driver: stream_driver <profile> <stream.bin> <chunk>
+// Stream driver: stream_driver <profile> <stream.bin> <chunk> [system]
+// With `system` the reader delivers system frames (printed with msg_id + 65536) and a final
+// "-1 <cnt_system_frames> <cnt_system_rejected> <cnt_crc_failures> <cnt_seq_gaps>" line follows.
 // The message table matches tests/fuzz/corpus.py.
 #![allow(dead_code)]
 
@@ -27,9 +29,10 @@ fn fnv1a(d: &[u8]) -> u32 {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 4 {
+    if args.len() != 4 && args.len() != 5 {
         std::process::exit(64);
     }
+    let deliver = args.len() == 5 && args[4] == "system";
     let cfg = match args[1].as_str() {
         "standard" => sf::PROFILE_STANDARD_CONFIG,
         "sensor" => sf::PROFILE_SENSOR_CONFIG,
@@ -41,6 +44,7 @@ fn main() {
     let chunk: usize = args[3].parse().unwrap();
     let data = std::fs::read(&args[2]).unwrap();
     let mut reader = AccumulatingReader::new(cfg, 1024);
+    reader.set_deliver_system_frames(deliver);
     let mut pos = 0;
     while pos < data.len() {
         let end = (pos + chunk).min(data.len());
@@ -51,10 +55,15 @@ fn main() {
                 None => break,
                 Some(f) => {
                     if f.valid {
-                        println!("{} {} {}", f.msg_id, f.msg_len, fnv1a(&f.msg_data));
+                        let id = f.msg_id as u32 + if f.is_system { 65536 } else { 0 };
+                        println!("{} {} {}", id, f.msg_len, fnv1a(&f.msg_data));
                     }
                 }
             }
         }
+    }
+    if deliver {
+        let d = reader.diagnostics();
+        println!("-1 {} {} {} {}", d.cnt_system_frames, d.cnt_system_rejected, d.cnt_crc_failures, d.cnt_seq_gaps);
     }
 }

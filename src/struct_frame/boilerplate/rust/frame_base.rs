@@ -88,6 +88,9 @@ pub struct FrameMsgInfo {
     pub variable_encoding: Option<bool>,
     /// Status indicating the reason this result is not valid (only meaningful when valid is false).
     pub status: FrameMsgStatus,
+    /// True for a system frame (payload type 9): `msg_id` is then a system message id
+    /// (see `system_frames`), never an application message id.
+    pub is_system: bool,
     /// Diagnostics snapshot at the moment this result was produced. Only populated by
     /// `AccumulatingReader::push_byte()` (mirrors the other six languages' push_byte
     /// contract, where every result -- valid or not -- carries a diagnostics snapshot).
@@ -138,9 +141,17 @@ pub struct ParserDiagnostics {
     pub cnt_len_errors: u32,
 
     /// Number of sequence-number gaps detected.
-    /// Only incremented on profiles that carry a sequence field (e.g. ProfileNetwork).
+    /// Only incremented on profiles that carry a sequence field (e.g. ProfileNetwork), and on
+    /// system frames (counted separately from application frames).
     /// Indicates dropped packets.
     pub cnt_seq_gaps: u32,
+
+    /// Number of valid system frames (payload type 9), delivered or hidden.
+    pub cnt_system_frames: u32,
+
+    /// Number of candidate system frames whose header named an unknown system message or an
+    /// impossible length; the reader resynchronised at once instead of collecting a payload.
+    pub cnt_system_rejected: u32,
 }
 
 /// Message metadata used for parsing (size + magic numbers)

@@ -143,6 +143,9 @@ class FrameMsgInfo:
     sequence: int = 0
     system_id: int = 0
     component_id: int = 0
+    # True for a system frame (payload type 9): msg_id is then a system message id
+    # (see system_frames.py), never an application message id.
+    is_system: bool = False
 
     # Parser state / reason code (meaningful when valid is False)
     status: FrameMsgStatus = FrameMsgStatus.NONE
@@ -182,12 +185,19 @@ class ParserDiagnostics:
                             Only incremented on profiles that carry a
                             sequence field (e.g. ProfileNetwork).
                             Indicates dropped packets.
+        cnt_system_frames:  Valid system frames (payload type 9) received,
+                            whether or not the reader delivers them.
+        cnt_system_rejected: Candidate system frames rejected from their header
+                            (unknown system message id or a length outside the
+                            message's limits) before any payload was collected.
     """
     cnt_crc_failures: int = 0
     cnt_sync_recoveries: int = 0
     cnt_failed_bytes: int = 0
     cnt_len_errors: int = 0
     cnt_seq_gaps: int = 0
+    cnt_system_frames: int = 0
+    cnt_system_rejected: int = 0
 
 
 # =============================================================================

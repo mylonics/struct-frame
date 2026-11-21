@@ -64,6 +64,27 @@ SUITES: List[Tuple[str, str, str]] = [
     ("py/test_variable_flag.py",       "bulk",     "variable_bulk.bin"),
 ]
 
+def system_goldens() -> dict:
+    """{golden filename: bytes} of the system-frame goldens (conformance § 9).
+
+    ``system_basic.bin`` / ``system_tiny.bin`` are the § 9.3 known-answer frames built from the
+    format description (tests/test_system_frames.py); ``mixed_network_system.bin`` interleaves
+    Network application frames, system frames, garbage and stray system headers
+    (tests/fuzz/corpus.py). Every runtime decodes them in tests/test_stream_cross_lang.py.
+    """
+    for path in (TESTS_DIR, TESTS_DIR / "fuzz"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    import corpus
+    from test_system_frames import EXPECTED, VECTORS
+    mixed, _hidden, _delivered = corpus.system_stream("network", seed=1)
+    return {
+        "system_basic.bin": b"".join(f for v, f in zip(VECTORS, EXPECTED) if v.profile != "sensor"),
+        "system_tiny.bin": b"".join(f for v, f in zip(VECTORS, EXPECTED) if v.profile == "sensor"),
+        "mixed_network_system.bin": mixed,
+    }
+
+
 PROTOS = [
     "test_messages.sf",
     "pkg_test_messages.sf",
@@ -257,6 +278,22 @@ def main() -> int:
             elif args.verbose:
                 print(f"[ ok ] {golden_name}")
 
+    for golden_name, fresh_bytes in system_goldens().items():
+        golden_path = GOLDEN_DIR / golden_name
+        if args.update:
+            golden_path.write_bytes(fresh_bytes)
+            updated.append(golden_name)
+        elif not golden_path.exists():
+            failures.append(f"MISSING: {golden_name} (run with --update)")
+        elif golden_path.read_bytes() != fresh_bytes:
+            golden_bytes = golden_path.read_bytes()
+            failures.append(
+                f"DRIFT: {golden_name}\n"
+                f"  expected ({len(golden_bytes)} bytes): {_hex_preview(golden_bytes)}\n"
+                f"  actual   ({len(fresh_bytes)} bytes): {_hex_preview(fresh_bytes)}")
+        elif args.verbose:
+            print(f"[ ok ] {golden_name}")
+
     if args.update:
         print(f"\nUpdated {len(updated)} golden file(s) under {GOLDEN_DIR.relative_to(REPO_ROOT)}:")
         for name in updated:
@@ -273,7 +310,7 @@ def main() -> int:
               "docs/src/content/docs/reference/conformance.md § 8.")
         return 1
 
-    print(f"[PASS] all {len(SUITES)} golden(s) match.")
+    print(f"[PASS] all {len(SUITES) + len(system_goldens())} golden(s) match.")
 
     # -----------------------------------------------------------------
     # DECODE DIRECTION: each golden file is decoded by the Python

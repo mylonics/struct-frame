@@ -6,7 +6,7 @@
  * This file mirrors the C++ payload_types.hpp structure.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = exports.PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG = exports.PAYLOAD_SEQ_CONFIG = exports.PAYLOAD_SYS_COMP_CONFIG = exports.PAYLOAD_EXTENDED_CONFIG = exports.PAYLOAD_EXTENDED_LENGTH_CONFIG = exports.PAYLOAD_EXTENDED_MSG_IDS_CONFIG = exports.PAYLOAD_DEFAULT_CONFIG = exports.PAYLOAD_MINIMAL_CONFIG = exports.MAX_PAYLOAD_TYPE_VALUE = exports.PayloadType = void 0;
+exports.PAYLOAD_SYSTEM_CONFIG = exports.PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = exports.PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG = exports.PAYLOAD_SEQ_CONFIG = exports.PAYLOAD_SYS_COMP_CONFIG = exports.PAYLOAD_EXTENDED_CONFIG = exports.PAYLOAD_EXTENDED_LENGTH_CONFIG = exports.PAYLOAD_EXTENDED_MSG_IDS_CONFIG = exports.PAYLOAD_DEFAULT_CONFIG = exports.PAYLOAD_MINIMAL_CONFIG = exports.MAX_PAYLOAD_TYPE_VALUE = exports.PayloadType = void 0;
 exports.payloadHeaderSize = payloadHeaderSize;
 exports.payloadFooterSize = payloadFooterSize;
 exports.payloadOverhead = payloadOverhead;
@@ -22,9 +22,10 @@ var PayloadType;
     PayloadType[PayloadType["SYS_COMP"] = 5] = "SYS_COMP";
     PayloadType[PayloadType["SEQ"] = 6] = "SEQ";
     PayloadType[PayloadType["MULTI_SYSTEM_STREAM"] = 7] = "MULTI_SYSTEM_STREAM";
-    PayloadType[PayloadType["EXTENDED_MULTI_SYSTEM_STREAM"] = 8] = "EXTENDED_MULTI_SYSTEM_STREAM"; // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    PayloadType[PayloadType["EXTENDED_MULTI_SYSTEM_STREAM"] = 8] = "EXTENDED_MULTI_SYSTEM_STREAM";
+    PayloadType[PayloadType["SYSTEM"] = 9] = "SYSTEM"; // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [SYS_MSG_ID] [PACKET] [CRC1] [CRC2] (system frames)
 })(PayloadType || (exports.PayloadType = PayloadType = {}));
-/** Maximum payload type value (for range checking) */
+/** Maximum application payload type value (for range checking); SYSTEM is reserved. */
 exports.MAX_PAYLOAD_TYPE_VALUE = 8;
 /** Calculate header size (fields before payload, excluding start bytes) */
 function payloadHeaderSize(config) {
@@ -156,4 +157,19 @@ exports.PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = {
     hasSysId: true,
     hasCompId: true,
     hasPkgId: true,
+};
+/**
+ * System frames: struct-frame's own messages (heartbeat, ping, link tests, RPC).
+ * Carried after a Basic or Tiny header with payload type 9 (start byte 0x79).
+ */
+exports.PAYLOAD_SYSTEM_CONFIG = {
+    payloadType: PayloadType.SYSTEM,
+    hasCrc: true,
+    crcBytes: 2,
+    hasLength: true,
+    lengthBytes: 2,
+    hasSeq: true,
+    hasSysId: true,
+    hasCompId: true,
+    hasPkgId: false,
 };

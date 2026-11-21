@@ -21,6 +21,22 @@ def to_camel_case(name: str) -> str:
     return _to_camel_case(name)
 
 
+def field_props_literal(msg) -> str:
+    """Object literal mapping each schema field to the accessor properties that hold it
+    (bounded strings/arrays keep a length/count next to their data)."""
+    entries = []
+    for field in msg.fields.values():
+        name = to_camel_case(field.name)
+        if field.is_array and field.max_size is not None:
+            props = [f"{name}Count", f"{name}Data"]
+        elif not field.is_array and field.field_type in ("string", "bytes") and field.max_size is not None:
+            props = [f"{name}Length", f"{name}Data"]
+        else:
+            props = [name]
+        entries.append(f"{name}: [{', '.join(repr(p) for p in props)}]")
+    return "{ " + ", ".join(entries) + " }"
+
+
 def needs_default_bytes(msg) -> bool:
     """True if this message's wire-format default state (schema
     [default = ...] values, zero elsewhere) differs from all-zero -- i.e.

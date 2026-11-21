@@ -1,4 +1,5 @@
-// Schema behind the enum examples in basic-usage/message-definitions.md; doc samples compile against it.
+/// Schema behind the enum examples in basic-usage/message-definitions.md; doc samples compile against it.
+
 package sensor_system;
 
 enum SensorType {
@@ -7,8 +8,7 @@ enum SensorType {
   PRESSURE = 2;
 }
 
-message SensorReading {
-  option msgid = 1;
-  SensorType type = 1;
-  float value = 2;
+message SensorReading @1 {
+  SensorType type;
+  float value;
 }

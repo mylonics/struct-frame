@@ -1,0 +1,312 @@
+{
+ "ir": {
+  "documentation_hash": "2175ab150dd7d492c6fab74247108a3974fce38fd65d8deb939a475ad284276b",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "VehicleType": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "FIXED_WING": [
+        1,
+        []
+       ],
+       "QUADCOPTER": [
+        2,
+        []
+       ],
+       "UNKNOWN": [
+        0,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "FIXED_WING": [],
+       "QUADCOPTER": [],
+       "UNKNOWN": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "VehicleType",
+      "package": "hello",
+      "size": 1,
+      "source_file": "hello.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "hello.sf": [
+      "// Minimal schema used by the hello.c, hello.py and hello.ts examples."
+     ]
+    },
+    "messages": {
+     "Heartbeat": {
+      "_class": "Message",
+      "base_size": 2,
+      "comments": [],
+      "default_bytes": {
+       "hex": "0000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "id",
+        "number": 1,
+        "package": "hello",
+        "size": 1,
+        "size_option": null,
+        "source_file": "hello.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "type": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "VehicleType",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "type",
+        "number": 2,
+        "package": "hello",
+        "size": 1,
+        "size_option": null,
+        "source_file": "hello.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "hello",
+        "type_ref": {
+         "message": null,
+         "name": "VehicleType",
+         "package": "hello",
+         "ref": "enum"
+        }
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       17,
+       19
+      ],
+      "magic_bytes_override": null,
+      "min_size": 2,
+      "name": "Heartbeat",
+      "oneofs": {},
+      "package": "hello",
+      "size": 2,
+      "source_file": "hello.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "Pose": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "pitch": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "pitch",
+        "number": 1,
+        "package": "hello",
+        "size": 4,
+        "size_option": null,
+        "source_file": "hello.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sample": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sample",
+        "number": 3,
+        "package": "hello",
+        "size": 4,
+        "size_option": null,
+        "source_file": "hello.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "yaw_rate": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "yaw_rate",
+        "number": 2,
+        "package": "hello",
+        "size": 4,
+        "size_option": null,
+        "source_file": "hello.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       27,
+       55
+      ],
+      "magic_bytes_override": null,
+      "min_size": 12,
+      "name": "Pose",
+      "oneofs": {},
+      "package": "hello",
+      "size": 12,
+      "source_file": "hello.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "hello",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "0755f6f15c7b6713077f6535ab44d554e90941b4a396c59dea3a84f0ded3b109"
+ },
+ "outputs": {
+  "c/hello.structframe.h": "f9255ed898cb4bb474e1cd699eb5b614c50a048390a2c0a9f53022ada819faa3",
+  "c/hello.tests.h": "703de70af44c37820c603508e801e7eb3cc12ba1a9ed226163a7bab932b04cbf",
+  "c/structframe_all.h": "5e66bc505f0798a304d80a43645018a2ec534742fe3c9913854b25acc7604bb3",
+  "c/test_roundtrip_hello.c": "44625375f66e912e15b8c03bfc3a344efb93ce3e39eefafd43a204cfba2f338c",
+  "cpp/hello.structframe.hpp": "fe6f171d316de11a3125611ce5d6a83766217faad4412a2af4d035646962b335",
+  "cpp/hello.tests.hpp": "4302159dfb5a374bfad2490fccc2cec9fc0cb24bb9fdd42a9547f5ddbb7ecc79",
+  "cpp/structframe_all.hpp": "84f3485e467d8626a2b886018f4b28c9d0b4857b44b858945309f4a7a2a1157f",
+  "cpp/test_roundtrip_hello.cpp": "b094a9f7abc8c4636142a16ed3254f317eb4897e2bd926e4bc1cdff012b317dd",
+  "csharp/Hello/Constants.cs": "85827468b42b3310bdfc85bc2a582488ecfafc5dad574d082dd165568f547bf6",
+  "csharp/Hello/Enums/VehicleType.cs": "2d211ba65aa848602bffd198deec1e574ad751c8728f0e07bee27148ee79048a",
+  "csharp/Hello/MessageDefinitions.cs": "f4b73609326ce25fe4a17729d5c231aa14fbe1cbf9bd609b8dd8b18d3447efbf",
+  "csharp/Hello/Messages/Heartbeat.cs": "f20e8169beded10f38844665a6157d3b98d0a410585dc689f4577193d85b151f",
+  "csharp/Hello/Messages/Pose.cs": "71f0502d49dea04ce9ec58aa0776af8b83d2fdb7af3a1ed49d7f387c54c4d369",
+  "csharp/Hello/SdkInterface.cs": "dea566a51d47c94641b1c4f2fc0b7a4f17657a5388de022c1e0502c82b314695",
+  "csharp/Hello/test_roundtrip_hello.cs": "02aad5f1c47878c793a005554d675036b55b60dcf9a5802ecc4a3d597817e1f1",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/hello.graphql": "2e9edb4cf283e426f9b730e7b32f024a7095eb51fd6667b1a8d8a82408e7d258",
+  "gql/schema.graphql": "21f141bdda51e96526d44b48004e65c98ccd5bcaebca79212cb55ccb6eaeff4a",
+  "js/hello.structframe.js": "4cd9fa7b6a7941a7c18477fb091796fa0206bba44980193a7109c213861b2e72",
+  "js/test_roundtrip_hello.js": "7be29cebf932923a62e2827c7fcd29d8ea04c2a40b50081c374891de146daf68",
+  "py/structframe/hello.py": "96ce3568f5013c6705203829eacdb9d3a56d93f6aa7092a2ed0d7d996ba740ff",
+  "py/structframe/hello_tests.py": "4c73e14af4b18c0b14c5d4ca90518e61bf532ccdd37a69278b65ce97ceba9e16",
+  "py/test_roundtrip_hello.py": "ec7e64138df4224477d6f5282cfe235de7515975f491aedd8afe89ca806a9825",
+  "rust/Cargo.toml": "b1116ef19d0df129f76a5e1384c42eabea49d07867d90c77e89d1f04a22bf70b",
+  "rust/hello.structframe.rs": "40ab1d8819584d8a0ba22ded5b73e0f300ec4d09cf6beb33528e469d3a95aabd",
+  "rust/test_roundtrip_hello.rs": "17b7752f845469b8347b5c31b97a46af8579699d4c0c641af47ba1b48dc7c257",
+  "sf_compile.json": "0704a7576cdcf0b2dcd0d84f3d7f65a9ca59fc476a3b018bc8f6288e24c7220d",
+  "ts/hello.structframe.ts": "360c72f506bfb72f2a010a2d06630c7de041c5e123eb3a993151fed1f2e162c5",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_hello.ts": "f5bdf824288b789ee9ac3d5e4d460e067f9991c595d3d057ad32760436f3d723"
+ },
+ "outputs_no_packed": {
+  "c/hello.structframe.h": "a198e5b13af6e19a1f19329e8a7dc77688d819bf47f4512fe72007239f98bda4",
+  "c/hello.tests.h": "703de70af44c37820c603508e801e7eb3cc12ba1a9ed226163a7bab932b04cbf",
+  "c/structframe_all.h": "5e66bc505f0798a304d80a43645018a2ec534742fe3c9913854b25acc7604bb3",
+  "c/test_roundtrip_hello.c": "44625375f66e912e15b8c03bfc3a344efb93ce3e39eefafd43a204cfba2f338c",
+  "cpp/hello.structframe.hpp": "5e4412d8e2e6b5bbd8aa5cba0ca5a103349219593f10bcd4a84c47348bc0f3df",
+  "cpp/hello.tests.hpp": "4302159dfb5a374bfad2490fccc2cec9fc0cb24bb9fdd42a9547f5ddbb7ecc79",
+  "cpp/structframe_all.hpp": "84f3485e467d8626a2b886018f4b28c9d0b4857b44b858945309f4a7a2a1157f",
+  "cpp/test_roundtrip_hello.cpp": "b094a9f7abc8c4636142a16ed3254f317eb4897e2bd926e4bc1cdff012b317dd",
+  "csharp/Hello/Constants.cs": "edacab6c64f08748c9d48c628181c33abd6a322f5f53090022481982d38ea75c",
+  "csharp/Hello/Enums/VehicleType.cs": "2d211ba65aa848602bffd198deec1e574ad751c8728f0e07bee27148ee79048a",
+  "csharp/Hello/MessageDefinitions.cs": "f4b73609326ce25fe4a17729d5c231aa14fbe1cbf9bd609b8dd8b18d3447efbf",
+  "csharp/Hello/Messages/Heartbeat.cs": "c6ad39fb3203d40d505eb9c78b25c56df8da8bc2ac965a9924c1925657621efb",
+  "csharp/Hello/Messages/Pose.cs": "a8beea0bfca399f483146df51332fa6f939383da83c3d33a2085f6f23a7d90ff",
+  "csharp/Hello/SdkInterface.cs": "dea566a51d47c94641b1c4f2fc0b7a4f17657a5388de022c1e0502c82b314695",
+  "csharp/Hello/test_roundtrip_hello.cs": "02aad5f1c47878c793a005554d675036b55b60dcf9a5802ecc4a3d597817e1f1",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/hello.graphql": "2e9edb4cf283e426f9b730e7b32f024a7095eb51fd6667b1a8d8a82408e7d258",
+  "gql/schema.graphql": "21f141bdda51e96526d44b48004e65c98ccd5bcaebca79212cb55ccb6eaeff4a",
+  "js/hello.structframe.js": "4385fbb52738c82854b069e3d73a0c30a03dd56bed8f29c0875dc67c0403fef9",
+  "js/test_roundtrip_hello.js": "7be29cebf932923a62e2827c7fcd29d8ea04c2a40b50081c374891de146daf68",
+  "py/structframe/hello.py": "82cfc5c191aff1f53c6ef3d5f9462a3917fbfeb021cc09d6c5545cadff8959b3",
+  "py/structframe/hello_tests.py": "4c73e14af4b18c0b14c5d4ca90518e61bf532ccdd37a69278b65ce97ceba9e16",
+  "py/test_roundtrip_hello.py": "ec7e64138df4224477d6f5282cfe235de7515975f491aedd8afe89ca806a9825",
+  "rust/Cargo.toml": "b1116ef19d0df129f76a5e1384c42eabea49d07867d90c77e89d1f04a22bf70b",
+  "rust/hello.structframe.rs": "301b916252724caea978764c032aeaa0dfe479f6de5bd1f6a5c31f093f19c3ca",
+  "rust/test_roundtrip_hello.rs": "17b7752f845469b8347b5c31b97a46af8579699d4c0c641af47ba1b48dc7c257",
+  "sf_compile.json": "3389411fe7e851d9d473a9aa079aa9ba06dc6d5a9de0d6af6e1461b9147c4cde",
+  "ts/hello.structframe.ts": "361f787edc592838dd9ed27ea4abf125537d2bee85ebf7abe36d0a2163b11d90",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_hello.ts": "f5bdf824288b789ee9ac3d5e4d460e067f9991c595d3d057ad32760436f3d723"
+ },
+ "schema": "examples/basic/hello.sf"
+}

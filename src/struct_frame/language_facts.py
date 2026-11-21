@@ -107,6 +107,60 @@ FIELD_OPTIONS = {
     "default": "literal",
 }
 
+# ---------------------------------------------------------------------------
+# Native schema syntax (struct-frame language)
+# ---------------------------------------------------------------------------
+
+# Short spellings of the primitive types. Each is exactly the same type as its long name;
+# the compiler normalizes to the long name, so generated code never depends on the spelling.
+PRIMITIVE_ALIASES = {
+    "u8": "uint8",
+    "i8": "int8",
+    "u16": "uint16",
+    "i16": "int16",
+    "u32": "uint32",
+    "i32": "int32",
+    "u64": "uint64",
+    "i64": "int64",
+    "f32": "float",
+    "f64": "double",
+}
+
+# Sized container types, C++/ETL style. name -> (canonical name, element kind, sizing).
+#   array<T, N>        exactly N elements          vector<T, N>   up to N, count-prefixed
+#   string<N>/bytes<N> up to N bytes, len-prefixed  fixed_string<N>/fixed_bytes<N>  exactly N
+CONTAINER_TYPES = {
+    "array": ("array", "elements", "fixed"),
+    "arr": ("array", "elements", "fixed"),
+    "vector": ("vector", "elements", "bounded"),
+    "vec": ("vector", "elements", "bounded"),
+    "string": ("string", "string", "bounded"),
+    "bytes": ("bytes", "bytes", "bounded"),
+    "fixed_string": ("fixed_string", "string", "fixed"),
+    "fstring": ("fixed_string", "string", "fixed"),
+    "fixed_bytes": ("fixed_bytes", "bytes", "fixed"),
+    "fbytes": ("fixed_bytes", "bytes", "fixed"),
+}
+
+# Words with a fixed meaning. Only the declaration keywords are reserved at the start of a
+# declaration; all of them stay valid as field and variant names.
+KEYWORDS = ("package", "import", "const", "enum", "struct", "message", "oneof",
+            "extensions", "service", "rpc", "true", "false")
+
+# Attributes ([name] or [name = value]) per declaration kind. "value" describes what the
+# attribute takes: bool (a bare name means true), int, discriminator, magic (two bytes).
+ATTRIBUTES = {
+    "message": {"variable": "bool", "envelope": "bool", "magic": "magic"},
+    "struct": {"variable": "bool"},
+    "field": {"flatten": "bool"},
+    "oneof": {"discriminator": "discriminator", "variable": "bool",
+              "max_size": "int", "min_size": "int"},
+    "rpc": {"idempotent": "bool"},
+}
+
+# File extension of schema files.
+SCHEMA_EXTENSION = ".sf"
+
 # How a oneof's active variant is identified on the wire.
 DISCRIMINATOR_MODES = ("auto", "msgid", "field_order", "none")
 DISCRIMINATOR_ALIASES = {"false": "none", "off": "none", "disabled": "none"}
@@ -208,6 +262,11 @@ def to_json():
             "field": FIELD_OPTIONS,
         },
         "option_aliases": {"message": MESSAGE_OPTION_ALIASES},
+        "primitive_aliases": PRIMITIVE_ALIASES,
+        "container_types": {name: {"canonical": c, "element": e, "sizing": s}
+                            for name, (c, e, s) in CONTAINER_TYPES.items()},
+        "keywords": list(KEYWORDS),
+        "attributes": ATTRIBUTES,
         "discriminator": {"modes": list(DISCRIMINATOR_MODES), "aliases": DISCRIMINATOR_ALIASES},
         "true_values": list(TRUE_VALUES),
         "false_values": list(FALSE_VALUES),

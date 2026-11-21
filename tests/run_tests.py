@@ -447,7 +447,31 @@ class TestRunner:
         SDK 11 host would otherwise pick net11.0, which no project declares).
         """
         tfm = (explicit_framework or os.environ.get("SF_DOTNET_TFM", "")).strip().lower()
+<<<<<<< Updated upstream
         return tfm or "net10.0"
+=======
+        if tfm:
+            return tfm
+        # The newest framework the test project targets that the installed SDK can build: a
+        # newer SDK (e.g. a preview) must not pick a framework the projects don't list.
+        supported = [8]
+        csproj = self.project_root / "tests" / "csharp" / "StructFrameTests.csproj"
+        try:
+            match = re.search(r"<TargetFrameworks?>([^<]+)</TargetFrameworks?>",
+                              csproj.read_text(encoding="utf-8"))
+            if match:
+                supported = sorted(int(m) for m in re.findall(r"net(\d+)\.0", match.group(1))) or supported
+        except OSError:
+            pass
+        ok, stdout, _ = self.run_cmd("dotnet --version", timeout=10)
+        if ok and stdout:
+            major = stdout.strip().split(".")[0]
+            if major.isdigit():
+                usable = [v for v in supported if v <= int(major)]
+                if usable:
+                    return f"net{usable[-1]}.0"
+        return f"net{supported[0]}.0"
+>>>>>>> Stashed changes
     
     def _init_languages(self) -> Dict[str, Language]:
         """Initialize language configurations."""

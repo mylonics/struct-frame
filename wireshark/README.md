@@ -12,7 +12,7 @@ This directory contains a Wireshark Lua dissector for the Struct Frame protocol.
   - Bulk (BasicExtended) - Large Data Transfers
   - Network (BasicExtendedMultiSystemStream) - Multi-Node Mesh
 - **Field-by-field Decoding**: Displays all frame fields including:
-  - Start bytes (0x90 for Basic, 0x70-0x78 for Tiny)
+  - Start bytes (0x90 for Basic, 0x70-0x79 for Tiny; 0x79 marks a system frame)
   - Sequence numbers
   - System/Component IDs for routing
   - Length fields (8-bit or 16-bit)
@@ -74,8 +74,8 @@ The dissector will automatically detect Struct Frame packets in:
 - Packets with User DLT 147
 
 It looks for the characteristic start bytes:
-- `0x90` followed by `0x70-0x78` (Basic frames)
-- `0x70-0x78` as the first byte (Tiny frames)
+- `0x90` followed by `0x70-0x79` (Basic frames)
+- `0x70-0x79` as the first byte (Tiny frames)
 
 ### Capture Filter
 
@@ -150,6 +150,10 @@ The second start byte (for Basic) or the single start byte (for Tiny) encodes th
 - `0x76` = Seq
 - `0x77` = MultiSystemStream
 - `0x78` = ExtendedMultiSystemStream
+- `0x79` = System: struct-frame's own messages (heartbeat, ping, link tests, RPC). The
+  dissector names the system message and verifies its checksum with the magic bytes of the
+  built-in `sf_system.sf` schema, so no magic-table entry is needed. See
+  [Conformance § 9](../docs/src/content/docs/reference/conformance.md#9-system-frames).
 
 ## Example Packet Dissection
 

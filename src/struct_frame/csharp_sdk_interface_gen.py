@@ -70,7 +70,7 @@ def get_csharp_field_type(field, package_name, package=None):
     
     # Handle arrays
     if field.is_array:
-        if field.field_type == "string":
+        if field.field_type in ("string", "bytes"):
             # String arrays are byte[] in C#
             return "byte[]"
         else:
@@ -80,7 +80,7 @@ def get_csharp_field_type(field, package_name, package=None):
                 return f"{base_type}[]"
     
     # Handle regular strings
-    elif field.field_type == "string":
+    elif field.field_type in ("string", "bytes"):
         return "byte[]"
     
     # Handle regular fields
@@ -234,7 +234,7 @@ class SdkInterfaceGen:
                 
                 # Handle different field types
                 if field.is_array:
-                    if field.field_type == "string":
+                    if field.field_type in ("string", "bytes"):
                         # String arrays
                         if field.size_option is not None:
                             # Fixed string array
@@ -252,7 +252,7 @@ class SdkInterfaceGen:
                             # Variable array
                             yield f'            message.{struct_field_name}Count = {_count_cast(field)}Math.Min({param_name}.Length, {field.max_size});\n'
                             yield f'            message.{struct_field_name}Data = {param_name};\n'
-                elif field.field_type == "string":
+                elif field.field_type in ("string", "bytes"):
                     # Regular strings
                     if field.size_option is not None:
                         # Fixed string
@@ -312,7 +312,7 @@ class SdkInterfaceGen:
         # Collect envelope fields (non-oneof, non-complex fields)
         envelope_fields = []
         for f_name, f in envelope_msg.fields.items():
-            if f.is_array or f.field_type == "string":
+            if f.is_array or f.field_type in ("string", "bytes"):
                 continue
             csharp_type = csharp_types.get(f.field_type)
             if csharp_type is None:
@@ -400,7 +400,7 @@ class SdkInterfaceGen:
         # Collect envelope fields (non-oneof, non-complex fields) for the overload
         envelope_fields = []
         for f_name, f in envelope_msg.fields.items():
-            if f.is_array or f.field_type == "string":
+            if f.is_array or f.field_type in ("string", "bytes"):
                 continue
             csharp_type = csharp_types.get(f.field_type)
             if csharp_type is None:
@@ -491,7 +491,7 @@ class SdkInterfaceGen:
                     
                     # Handle different field types
                     if pf.is_array:
-                        if pf.field_type == "string":
+                        if pf.field_type in ("string", "bytes"):
                             if pf.size_option is not None:
                                 yield f'            message.{struct_field_name} = {param_name};\n'
                             elif pf.max_size is not None:
@@ -503,7 +503,7 @@ class SdkInterfaceGen:
                             elif pf.max_size is not None:
                                 yield f'            message.{struct_field_name}Count = {_count_cast(pf)}Math.Min({param_name}.Length, {pf.max_size});\n'
                                 yield f'            message.{struct_field_name}Data = {param_name};\n'
-                    elif pf.field_type == "string":
+                    elif pf.field_type in ("string", "bytes"):
                         if pf.size_option is not None:
                             yield f'            message.{struct_field_name} = {param_name};\n'
                         elif pf.max_size is not None:

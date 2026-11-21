@@ -1,155 +1,256 @@
 ---
 title: Message Definitions
-description: Define messages in Protocol Buffer .proto files for cross-language serialization code generation.
+description: The struct-frame schema language — packages, messages, structs, enums, sized types, defaults, oneofs, extensions and constants.
 ---
 
-Messages are defined in Protocol Buffer (.proto) files. Struct Frame uses these definitions to generate serialization code for each target language.
+Messages are defined in `.sf` files written in the **struct-frame schema language**. The generator turns them into fixed-layout structs, serializers and frame parsers for C, C++, Python, TypeScript, JavaScript, C# and Rust.
 
-## Why Proto Files
+```sf
+/// Robot telemetry.
+package robot @1;
 
-Proto files provide:
-- Language-neutral message definitions
-- Type safety across language boundaries
-- Familiar syntax for developers who know Protocol Buffers
-- Tooling support (syntax highlighting, linting)
+const uint8 NAME_LEN = 16;
 
-Struct Frame uses proto syntax but generates different code than Google's Protocol Buffers. By default messages are fixed-size packed structs; variable-length encoding is opt-in per message with `option variable = true` (see below).
+enum Mode {
+  IDLE = 0;
+  DRIVING = 1;
+}
+
+struct Position {
+  double lat;
+  double lon;
+}
+
+message Status @1 {
+  uint32                 uptime_ms = 1000;
+  fixed_string<NAME_LEN> name      = "robot";
+  Mode                   mode      = IDLE;
+  Position               pos;
+  vector<float, 6>       joints;
+}
+```
+
+Every declaration ends with `;` or a `{ ... }` block. Field order is wire order: fields are encoded in the order they are written.
+
+:::note[Coming from the old syntax?]
+Earlier versions used proto-style syntax (`option msgid = 1;`, `repeated`, `[size = N]`, field numbers). Convert a schema, and the files it imports, with:
+
+```bash
+struct-frame migrate robot.sf --in-place --recursive
+```
+
+The converted file builds exactly the same messages, magic bytes and generated code. See [Migrating from the old syntax](#migrating-from-the-old-syntax).
+:::
 
 ## Packages
 
-Packages group related messages and prevent name collisions:
+Every file starts with a `package` declaration. A package groups messages and provides the namespace (or name prefix) in generated code. Several files may belong to the same package.
 
-```proto
-package sensor_system;
-
-message SensorReading {
-  option msgid = 1;
-  float value = 1;
-}
-```
-
-Generated code uses the package name as a prefix or namespace depending on language.
-
-## Messages
-
-Messages define the structure of data to be serialized:
-
-```proto
-message DeviceStatus {
-  option msgid = 1;
-  uint32 device_id = 1;
-  float battery = 2;
-  bool online = 3;
-}
-```
-
-### Message Options
-
-**msgid** (required for top-level messages)
-
-```proto
-message Heartbeat {
-  option msgid = 42;
-  uint64 timestamp = 1;
-}
-```
-
-Message IDs must be unique within a package. Without a package ID the range is 0-65535; when the package sets `option pkgid`, the range is 0-255 and the full 16-bit wire ID is `(pkgid << 8) | msgid`. IDs above 255 only fit profiles that carry a package-ID byte (Bulk and Network); encoding such a message with a 1-byte-ID profile (Standard, Sensor, IPC) fails instead of truncating the ID. When several packages are compiled together, the *effective* IDs must be unique: a package without its own `pkgid` inherits its importer's, so its message IDs share that importer's ID space.
-
-**variable** (optional, enables variable-length encoding)
-
-```proto
-message SensorData {
-  option msgid = 1;
-  option variable = true;  // Encode only used bytes
-  repeated uint8 readings = 1 [max_size=100];
-}
-```
-
-With variable encoding, arrays and strings only transmit actual used bytes instead of the full max_size. This reduces bandwidth when fields are partially filled.
-
-You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no-packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have strict alignment requirements. It does not change byte order: all multi-byte values are little-endian on the wire, and the generated C/C++ code assumes a little-endian host. See the [CLI reference](/reference/cli-reference/) for details.
-
-**pkgid** (optional package-level option)
-
-```proto
+```sf
 package sensors;
-option pkgid = 5;
 ```
 
-Enables extended message addressing with 16-bit message IDs (256 packages × 256 messages = 65,536 total).
+A package can have a **package ID** (0–255), written after the name:
 
-## Data Types
+```sf
+package sensors @5;
+```
 
-| Type | Size | Description |
-|------|------|-------------|
-| int8 | 1 byte | Signed -128 to 127 |
-| uint8 | 1 byte | Unsigned 0 to 255 |
-| int16 | 2 bytes | Signed -32768 to 32767 |
-| uint16 | 2 bytes | Unsigned 0 to 65535 |
-| int32 | 4 bytes | Signed integer |
-| uint32 | 4 bytes | Unsigned integer |
-| int64 | 8 bytes | Signed large integer |
-| uint64 | 8 bytes | Unsigned large integer |
-| float | 4 bytes | IEEE 754 single precision |
-| double | 8 bytes | IEEE 754 double precision |
-| bool | 1 byte | true or false |
-| string | see below | Text with `size` (fixed) or `max_size` (variable) |
-| bytes | see below | Raw bytes; same wire format and options as `string` |
+With a package ID, message IDs are 0–255 and the full 16-bit wire ID is `(package_id << 8) | message_id`. IDs above 255 only fit profiles that carry a package-ID byte (Bulk and Network); encoding such a message with a 1-byte-ID profile (Standard, Sensor, IPC) fails instead of truncating the ID.
 
-All types use little-endian byte order.
+When several packages are compiled together, every package needs an ID — except a package without one that is imported by a package with one, which inherits its importer's ID. The *effective* IDs must be unique across all packages.
 
-## Field Default Values
+## Messages and structs
 
-A field can declare a default value with `[default = ...]`, using the same bracket-option
-syntax as `size`/`max_size`/`flatten`:
+A **message** is a type that can be sent in a frame on its own. It has a message ID, written after its name with `@`:
 
-```proto
-message DeviceConfig {
-  option msgid = 1;
-
-  uint32 retry_ms = 1 [default = 1000];
-  bool   enabled  = 2 [default = true];
-  Mode   mode     = 3 [default = ACTIVE];
-  string name     = 4 [size = 16, default = "device"];
+```sf
+message DeviceStatus @1 {
+  uint32 device_id;
+  float  battery;
+  bool   online;
 }
 ```
 
-**Supported types:** all integer types, `bool`, `float`, `double`, `enum` fields (using the
-bare enum member name, e.g. `default = ACTIVE`), and fixed- or bounded-size `string`/`bytes`
-fields (using a quoted string literal).
+Without a package ID the message ID range is 0–65535; with one it is 0–255. IDs may be written in decimal, hex (`@0x1F`) or binary (`@0b101`).
 
-**Not supported** — rejected at generation time with a validation error:
-- `repeated` (array) fields
-- nested message-typed fields
-- fields inside a `oneof`
+A **struct** is a type that is only embedded in other messages. It has no ID:
 
-The generator validates the literal against the field's type (wrong literal type, integer
-range overflow, unknown enum member, or a string/bytes value longer than `size`/`max_size`
-are all rejected with a specific error message).
+```sf
+struct Position {
+  double lat;
+  double lon;
+}
+
+message Vehicle @2 {
+  uint32   id;
+  Position pos;   // embedded inline
+}
+```
+
+Messages can be embedded too (that is how `oneof` variants and envelopes work), but a struct can never be sent on its own.
+
+### Attributes
+
+Attributes go in square brackets after a declaration's name (and ID). A bare attribute name means `true`:
+
+```sf
+message SensorData @3 [variable] {
+  vector<uint8, 100> readings;
+}
+```
+
+| Attribute | Applies to | Meaning |
+|-----------|------------|---------|
+| `variable` | message, struct | Variable-length encoding: arrays and strings only send the bytes in use |
+| `envelope` | message | Envelope message (see [Envelope messages](#envelope-messages)) |
+| `magic = [B1, B2]` | message | Fixed magic bytes instead of the computed ones (see [Magic bytes](#magic-bytes)) |
+| `flatten` | field | Flatten a struct field's members into the parent in `to_dict()` and GraphQL |
+| `discriminator = MODE` | oneof | How the active variant is identified (see [Oneof](#oneof-unions)) |
+| `variable` | oneof | Length-prefixed variant payload |
+| `min_size = N`, `max_size = N` | oneof | Minimum wire payload / reserved union size |
+| `idempotent` | rpc | The call may be executed more than once |
+
+An unknown attribute is an error, with a suggestion when it looks like a typo.
+
+**Variable encoding.** With `[variable]`, arrays and strings transmit only the bytes in use instead of their full capacity. To make *every* message variable at generation time, pass `--no-packed`; it also drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ code, for platforms without struct packing. It does not change byte order: all multi-byte values are little-endian on the wire, and the generated C/C++ code assumes a little-endian host.
+
+## Types
+
+### Primitive types
+
+Every primitive type has a long and a short name. They are the same type; use whichever you prefer (`struct-frame fmt --types long|short` normalizes a file).
+
+| Type | Short name | Size | Range / format |
+|------|------------|------|----------------|
+| `uint8` | `u8` | 1 | 0 – 255 |
+| `int8` | `i8` | 1 | −128 – 127 |
+| `uint16` | `u16` | 2 | 0 – 65535 |
+| `int16` | `i16` | 2 | −32768 – 32767 |
+| `uint32` | `u32` | 4 | 0 – 2³²−1 |
+| `int32` | `i32` | 4 | −2³¹ – 2³¹−1 |
+| `uint64` | `u64` | 8 | 0 – 2⁶⁴−1 |
+| `int64` | `i64` | 8 | −2⁶³ – 2⁶³−1 |
+| `float` | `f32` | 4 | IEEE 754 single precision |
+| `double` | `f64` | 8 | IEEE 754 double precision |
+| `bool` | | 1 | `true` / `false` |
+
+All multi-byte types are little-endian on the wire. Enums are stored in one byte.
+
+### Strings, bytes and arrays
+
+Sized types follow C++/ETL naming: the type name says whether the size is fixed or a maximum.
+
+| Type | Short name | Wire format |
+|------|------------|-------------|
+| `fixed_string<N>` | `fstring<N>` | Exactly N bytes, zero-padded |
+| `string<N>` | | Length prefix + up to N bytes |
+| `fixed_bytes<N>` | `fbytes<N>` | Exactly N bytes, zero-padded |
+| `bytes<N>` | | Length prefix + up to N bytes |
+| `array<T, N>` | `arr<T, N>` | Exactly N elements |
+| `vector<T, N>` | `vec<T, N>` | Count prefix + up to N elements |
+
+```sf
+struct Waypoint {
+  double lat;
+  double lon;
+}
+
+message Inventory @4 {
+  fixed_string<16>             device_name;   // always 16 bytes
+  string<256>                  description;   // 2-byte length + up to 256 bytes
+  array<float, 9>              matrix;        // always 9 floats
+  vector<int32, 100>           readings;      // 1-byte count + up to 100 values
+  vector<fixed_string<32>, 10> names;         // up to 10 strings of 32 bytes each
+  vector<Waypoint, 20>         route;         // up to 20 embedded structs
+}
+```
+
+- N is 1–65535; it may be an integer or a [constant](#constants).
+- The length/count prefix is 1 byte when N ≤ 255 and 2 bytes (`uint16`) when N is larger.
+- Array elements can be primitives, enums, structs, messages, `fixed_string<N>` or `fixed_bytes<N>`. Elements are always stored at full size, so a bounded `string<N>` cannot be an element, and arrays of arrays are not supported (wrap the inner array in a struct).
+- Sizes count bytes of UTF-8, not characters, and longer values are truncated to fit.
+
+In Python, string fields accept `str` (encoded as UTF-8) or `bytes` and always hold `bytes`; decoded messages return `bytes`, so call `.decode()` (and `.rstrip(b"\0")` for fixed-size strings) to get text:
+
+```python no-compile
+msg = Status(device_name="sensor-1")      # or b"sensor-1"
+name = Status.deserialize(data).device_name.rstrip(b"\0").decode()
+```
+
+## Default values
+
+A field can have a default value, written after its name:
+
+```sf
+enum PowerMode {
+  SLEEP = 0;
+  ACTIVE = 1;
+}
+
+message DeviceConfig @1 {
+  uint32           retry_ms = 1000;
+  bool             enabled  = true;
+  PowerMode        mode     = ACTIVE;
+  fixed_string<16> name     = "device";
+  float            gain     = 1.5;
+  int16            offset   = -40;
+  uint32           mask     = 0xFF00_FF00;
+}
+```
+
+Defaults are typed: an integer field takes an integer (decimal, hex, binary, `_` separators), a `float`/`double` field takes a number (including `inf`, `-inf` and `nan`), a `bool` field takes `true` or `false`, a string field takes a string literal, a bytes field takes a string literal or a list of byte values, and an enum field takes a member name (`ACTIVE`, or qualified `Mode.ACTIVE`). The value is checked against the field's type and range, and a string must fit the field's size.
+
+String literals use double quotes and support the escapes `\n \r \t \0 \\ \" \' \xNN` (ASCII) and `\uNNNN`.
+
+Arrays, vectors and struct-typed fields take composite values:
+
+```sf
+struct Point {
+  float x = 1.5;
+  float y;
+}
+
+message Path @2 {
+  array<uint8, 4>              mask   = [1, 2, 3];        // the 4th element is 0
+  vector<uint16, 8>            ticks  = [100, 200];       // starts with 2 elements
+  array<PowerMode, 2>          modes  = [ACTIVE];
+  vector<fixed_string<4>, 3>   names  = ["ab", "cd"];
+  fixed_bytes<4>               magic  = [0xCA, 0xFE];
+  Point                        origin = { y: 2.5 };        // x keeps Point's default, 1.5
+  array<Point, 2>              ends   = [{ x: 7 }];        // ends[1] is a Point at its defaults
+}
+```
+
+- An array literal may list fewer elements than the array holds. The rest of a fixed array, and the unused capacity of a vector, hold the element type's default: zero for scalars, the struct's own defaults for struct elements. A vector starts with as many elements as the literal lists.
+- A struct value `{ field: value, ... }` sets only the fields it names; the others keep the struct's own defaults. Values nest: `{ lo: { x: 3 }, tag: "bx" }`.
+- Oneof variants cannot have defaults.
+
+### Default helpers
+
+Every message also gets helpers built on its defaults. "Is default" compares the encoding, so it means the same in every language (a `nan` default is still a default).
+
+| Language | New message at defaults | Reset to defaults | Whole message at defaults? | One field at its default? |
+|----------|-------------------------|-------------------|----------------------------|---------------------------|
+| C | `Msg_init(&m)` | `Msg_reset(&m)` | `Msg_is_default(&m)` | `Msg_<field>_is_default(&m)` |
+| C++ | `Msg m{};` | `m.reset()` | `m.is_default()` | `m.<field>_is_default()` |
+| Python | `Msg.defaults()` | `m.reset()` | `m.is_default()` | `m.is_default("field")` |
+| TypeScript / JavaScript | `Msg.defaults()` | `m.reset()` | `m.isDefault()` | `m.isDefault("field")` |
+| C# | `Msg.Defaults()` | `m.Reset()` | `m.IsDefault()` | `m.Is<Field>Default()` |
+| Rust | `Msg::default()` | `m.reset()` | `m.is_default()` | `m.<field>_is_default()` |
+
+In C, C++, C# and Rust the helpers are generated for messages (types with an `@id`); in Python, TypeScript and JavaScript for structs too. A field cannot be named like one of these helpers (for example `reset`): the generator reports the collision.
 
 **What a default changes:**
-- A freshly-constructed message (or one built with a constructor/init argument omitted) gets
-  the default value for that field instead of the type's zero value.
-- Decoding an older or truncated payload (see [Wire Evolution](#wire-evolution-extension-fields)
-  below) applies the default to any field the sender didn't actually transmit.
-- A value **explicitly** set to zero/`false`/empty — whether at construction or because the
-  sender actually transmitted it — is never overwritten back to the default.
+- A freshly constructed message (or one built with a constructor/init argument omitted) gets the default value for that field instead of the type's zero value.
+- Decoding an older or truncated payload (see [Wire evolution](#wire-evolution-extensions)) applies the default to any field the sender didn't transmit.
+- A value **explicitly** set to zero/`false`/empty — whether at construction or because the sender actually transmitted it — is never overwritten back to the default.
 
-**What a default does *not* change:** wire layout, field offsets, message size, magic bytes,
-or CRC behavior. A default-valued field is still always present on the wire and still always
-serialized — it is purely an initialization and decode-fallback value, not a "this field can
-be omitted from the wire" marker (`optional`-style omission is not part of this feature).
-
-> **Note:** because the underlying `.proto` grammar parser types option values generically
-> (bool/int/float/string), a *quoted* string default whose text happens to look like a number
-> or boolean (e.g. `default = "1000"`) is round-tripped through that type and reconstructed —
-> this preserves the value but can normalize unusual formatting (e.g. `"True"` becomes `"true"`).
-> Prefer defaults whose text doesn't look like another literal type if exact formatting matters.
+**What a default does *not* change:** wire layout, field offsets, message size, magic bytes or CRC behaviour. A field with a default is always present on the wire and always serialized.
 
 ### Getting a message with its defaults, per language
 
-For `DefaultsMessage` in package `default_values` with `u8_val = 200`:
+For `DefaultsMessage` in package `default_values` with `uint8 u8_val = 200;`:
 
 | Language | Construct with defaults | Read the field |
 |----------|-------------------------|----------------|
@@ -160,102 +261,64 @@ For `DefaultsMessage` in package `default_values` with `u8_val = 200`:
 | C# | `new DefaultsMessage()` (property initialisers) | `m.U8Val` |
 | Rust | `DefaultsMessage::default()`, or `DefaultsMessage { u8_val: 5, ..Default::default() }` | `m.u8_val` |
 
-Decoding applies the same values: a field that a shorter, older payload did not carry is
-filled from the schema default in every language, and a field the sender did transmit is
-never replaced. In C, `Msg_deserialize` runs `Msg_init` first and then overlays the received bytes, so
-no caller-side padding is needed.
+Decoding applies the same values: a field that a shorter, older payload did not carry is filled from the schema default in every language, and a field the sender did transmit is never replaced. In C, `Msg_deserialize` runs `Msg_init` first and then overlays the received bytes, so no caller-side padding is needed.
 
-## Strings
+## Constants
 
-Strings require a size specification.
+A constant is a typed, named value. It can be used as a size and as a default value, and is emitted into the generated code of every language:
 
-**Fixed-size string**
+```sf
+const uint8  NAME_LEN    = 16;
+const uint16 MAX_SAMPLES = 512;
+const float  NOMINAL_V   = 3.3;
+const string VERSION     = "1.4.0";
 
-```proto
-string device_name = 1 [size=16];
-```
-
-Always uses 16 bytes, padded with nulls if shorter.
-
-**Variable-size string**
-
-```proto
-string description = 1 [max_size=256];
-```
-
-Stores up to 256 bytes plus a length prefix. The prefix is 1 byte when `max_size` ≤ 255 and 2 bytes (`uint16`) when `max_size` is larger, so this example uses a 2-byte prefix.
-
-Sizes count bytes of UTF-8, not characters, and longer values are truncated to fit. In Python, string fields accept `str` (encoded as UTF-8) or `bytes` and always hold `bytes`; decoded messages return `bytes`, so call `.decode()` (and `.rstrip(b"\0")` for fixed-size strings) to get text:
-
-```python no-compile
-msg = Status(device_name="sensor-1")      # or b"sensor-1"
-name = Status.deserialize(data).device_name.rstrip(b"\0").decode()
-```
-
-## Arrays
-
-All repeated fields must specify a size. Arrays can contain primitive types, enums, strings, or nested messages.
-
-**Fixed arrays**
-
-```proto
-repeated float matrix = 1 [size=9];  // Always 9 floats (3x3 matrix)
-```
-
-**Bounded arrays (variable count)**
-
-```proto
-repeated int32 readings = 1 [max_size=100];  // 0-100 integers
-```
-
-Includes a count prefix before the array data. Arrays with `max_size` ≤ 255 use a 1-byte (`uint8`) count; arrays with `max_size` > 255 use a 2-byte (`uint16`) count.
-
-**String arrays**
-
-```proto
-repeated string names = 1 [max_size=10, element_size=32];
-```
-
-Array of up to 10 strings, each up to 32 characters.
-
-**Arrays of nested messages**
-
-```proto
-message Waypoint {
-  double lat = 1;
-  double lon = 2;
-}
-
-message Route {
-  option msgid = 5;
-  string name = 1 [size=32];
-  repeated Waypoint waypoints = 2 [max_size=20];
+message Report @7 {
+  fixed_string<NAME_LEN>        name;
+  vector<uint16, MAX_SAMPLES>   samples;
+  float                         voltage = NOMINAL_V;
 }
 ```
 
-Array of up to 20 waypoint messages. Each Waypoint is embedded inline.
+The type is a primitive or `string`, and the value must fit it. Constants of an imported package are referenced with the package name, e.g. `common.NAME_LEN`.
+
+Every package also gets a generated `WIRE_HASH` constant (`uint32`): a fingerprint of its wire contract (message ids, magic bytes and sizes) that heartbeats report, so two nodes can tell that they were built from different schemas. It stays the same when you rename things, add documentation or add extension fields, and changes when you make a change that breaks the wire. `WIRE_HASH` is therefore a reserved constant name; see [Conformance § 9.4](/struct-frame/reference/conformance/#94-wire-hash).
 
 ## Enums
 
-```proto
+```sf
 enum SensorType {
   TEMPERATURE = 0;
   HUMIDITY = 1;
   PRESSURE = 2;
 }
 
-message SensorReading {
-  option msgid = 1;
-  SensorType type = 1;
-  float value = 2;
+message SensorReading @1 {
+  SensorType type;
+  float value;
 }
 ```
 
-Enums are stored as uint8 (1 byte).
+Every entry has an explicit value (0–255; enums are stored in one byte), and values must be unique. Values are never assigned implicitly, so inserting an entry can never renumber the others.
 
-### Enum to String Conversion
+Enums can also be declared inside a message, scoping them to it:
 
-Enums can be converted to strings using language built-in features or generated helper functions. The examples assume the schema above is in a file with `package sensor_system;`. Only C prefixes the type with the package name; the other languages put it in a namespace or module instead. TypeScript and JavaScript spell enum members in PascalCase, so their string is `Temperature`; the other languages give `TEMPERATURE`.
+```sf
+message MotorCommand @42 {
+  enum Direction {
+    FORWARD = 0;
+    REVERSE = 1;
+    BRAKE = 2;
+  }
+
+  Direction dir;
+  uint16 speed_rpm;
+}
+```
+
+### Enum to string conversion
+
+Enums can be converted to strings with language built-ins or generated helpers. The examples assume the schema above is in a file with `package sensor_system;`. Only C prefixes the type with the package name; the other languages put it in a namespace or module. TypeScript and JavaScript spell enum members in PascalCase, so their string is `Temperature`; the other languages give `TEMPERATURE`.
 
 **C** (generated helper function)
 ```c
@@ -281,7 +344,6 @@ const char* type_str = SensorType_to_string(type);
 from structframe.sensor_system import SensorType
 
 type = SensorType.TEMPERATURE
-# Use the built-in .name property
 type_str = type.name
 # Returns: "TEMPERATURE"
 ```
@@ -291,7 +353,6 @@ type_str = type.name
 import { SensorType } from './sensor-system.structframe';
 
 const type = SensorType.Temperature;
-// TypeScript numeric enums support reverse mapping
 const typeStr = SensorType[type];
 // Returns: "Temperature"
 ```
@@ -301,7 +362,6 @@ const typeStr = SensorType[type];
 const { SensorType } = require('./sensor-system.structframe');
 
 const type = SensorType.Temperature;
-// Find the key by value
 const typeStr = Object.keys(SensorType).find(
   key => SensorType[key] === type
 );
@@ -313,206 +373,132 @@ const typeStr = Object.keys(SensorType).find(
 using StructFrame.SensorSystem;
 
 SensorType type = SensorType.TEMPERATURE;
-// Use the built-in enum ToString method
 string typeStr = type.ToString();
 // Returns: "TEMPERATURE"
 ```
 
-## Nested Enums
+## Imports
 
-Enums can be defined inside a message body, scoping them to that message. This keeps the type closely associated with the message that uses it.
+Import the definitions of another file with `import`, after the `package` declaration:
 
-```proto
-message MotorCommand {
-  option msgid = 42;
-
-  enum Direction {
-    FORWARD = 0;
-    REVERSE = 1;
-    BRAKE = 2;
-  }
-
-  Direction dir = 1;
-  uint16 speed_rpm = 2;
-}
-```
-
-Enums are stored as `uint8` regardless of where they are defined.
-
-
-## Nested Messages
-
-```proto
-message Position {
-  double lat = 1;
-  double lon = 2;
-}
-
-message Vehicle {
-  option msgid = 1;
-  uint32 id = 1;
-  Position pos = 2;
-}
-```
-
-Nested messages are embedded inline.
-
-## Import Statements
-
-Import proto definitions from other files:
-
-```proto
-// types.proto
+```sf
+// types.sf
 package common;
 
-message Position {
-  double lat = 1;
-  double lon = 2;
+struct Position {
+  double lat;
+  double lon;
 }
 ```
 
-```proto
-// vehicle.proto
-import "types.proto";
+```sf
+// vehicle.sf
+package fleet @2;
 
-package fleet;
+import "types.sf";
 
-message Vehicle {
-  option msgid = 1;
-  uint32 id = 1;
-  common.Position pos = 2;
+message Vehicle @1 {
+  uint32 id;
+  common.Position pos;
 }
 ```
 
-## Flatten Option
+Imports are resolved relative to the directory of the schema given on the command line first, then relative to the importing file. A type is looked up in its own package and then in the packages that file imports directly; qualify it (`other.Type`) when two imported packages define the same name.
 
-Flatten nested message fields into the parent. Only the Python `to_dict()` output and the GraphQL schema are flattened; the generated classes and structs in every language keep the nested field:
+## Flatten
 
-```proto
-message Status {
-  Position pos = 1 [flatten=true];
-  float battery = 2;
+`[flatten]` on a struct-typed field flattens the struct's members into the parent. Only the Python `to_dict()` output and the GraphQL schema are flattened; the generated classes and structs in every language keep the nested field:
+
+```sf
+message Status @9 {
+  Position pos [flatten];
+  float battery;
 }
 ```
 
 In the dictionary and in GraphQL the keys are `lat`, `lon`, … instead of `pos.lat`; in code you still access `status.pos.lat`. Flattening is rejected when a child field name collides with a field of the parent.
 
-## Oneof (Union Types)
+## Oneof (unions)
 
-The `oneof` construct creates a union type where only one of the fields can be populated at a time. All fields within the `oneof` share the same memory, with the total size equal to the largest field.
+A `oneof` holds exactly one of several variants. All variants share the same memory; the union is as large as its largest variant.
 
-### Basic Oneof
+```sf
+message SensorReading @10 {
+  uint32 timestamp;
 
-```proto
-message SensorReading {
-  option msgid = 10;
-  uint32 timestamp = 1;
-  
   oneof value {
-    float temperature = 1;
-    int32 pressure = 2;
-    uint16 humidity = 3;
+    float  temperature;
+    int32  pressure;
+    uint16 humidity;
   }
 }
 ```
 
-**Memory Layout:**
-- The `value` union occupies 4 bytes (size of the largest type: `float` or `int32`)
-- Only one field (`temperature`, `pressure`, or `humidity`) should be set at a time
-- A `uint8` field order discriminator is automatically generated (stores 1, 2, or 3 based on which field is active)
+**Memory layout:**
+- The `value` union occupies 4 bytes (the size of the largest type, `float` or `int32`).
+- A `uint8` discriminator is generated automatically; it holds 1, 2 or 3 for the active variant (its position in the oneof).
 
-### Oneof with Message Types
+Oneofs are always encoded after the message's fields, so they must be declared after them.
 
-When all fields in a `oneof` are messages with `msgid`, an auto-discriminator using message IDs is generated:
+### Oneofs of messages
 
-```proto
-message CommandA {
-  option msgid = 100;
-  uint8 param1 = 1;
+When every variant is a message with an ID, the discriminator is the active variant's message ID:
+
+```sf
+message CommandA @100 {
+  uint8 param1;
 }
 
-message CommandB {
-  option msgid = 101;
-  uint16 param1 = 1;
-  uint16 param2 = 2;
+message CommandB @101 {
+  uint16 param1;
+  uint16 param2;
 }
 
-message CommandWrapper {
-  option msgid = 200;
-  uint32 sequence = 1;
-  
+message CommandWrapper @200 {
+  uint32 sequence;
+
   oneof command {
-    CommandA cmd_a = 1;
-    CommandB cmd_b = 2;
+    CommandA cmd_a;
+    CommandB cmd_b;
   }
 }
 ```
 
-**Memory Layout:**
-- `command_discriminator` (uint16_t) - auto-generated, stores the message ID of the active field
-- `command` union - size of the largest message type
+**Memory layout:**
+- `command_discriminator` (`uint16_t`) — auto-generated, holds the message ID of the active variant
+- `command` union — the size of the largest variant
 
-### Discriminator Option
+### The discriminator attribute
 
-You can control discriminator behavior with the `discriminator` option inside a `oneof`:
+```sf
+struct CmdA {
+  uint8 a;
+}
 
-```proto
-oneof payload {
-  option discriminator = field_order;  // or: msgid, none, auto
-  CmdA cmd_a = 1;
-  CmdB cmd_b = 2;
+struct CmdB {
+  uint16 b;
+}
+
+message Commands @201 {
+  oneof payload [discriminator = field_order] {
+    CmdA cmd_a;
+    CmdB cmd_b;
+  }
 }
 ```
 
-> **Field numbers in oneof:** variants are numbered `1..M` independently within the `oneof` — the same 1-based sequential rule that applies to message-level fields.
+| Value | Discriminator type | Size | Description |
+|-------|--------------------|------|-------------|
+| `auto` (default) | depends on the variants | varies | `msgid` if every variant is a message with an ID, otherwise `field_order` |
+| `msgid` | message ID | `uint16` (2 bytes) | Forces message IDs. **Error** if a variant has no ID |
+| `field_order` | variant position (1-based) | `uint8` (1 byte) | 1st variant = 1, 2nd = 2, … |
+| `none` | none | 0 bytes | No discriminator; the application tracks the active variant |
 
-| Option | Discriminator Type | Size | Description |
-|--------|-------------------|------|-------------|
-| `auto` (default) | Depends on fields | varies | Uses `msgid` if all fields are messages with msgid, otherwise `field_order` |
-| `msgid` | Message ID | uint16 (2 bytes) | Forces use of message IDs. **Error** if any field lacks msgid |
-| `field_order` | Field order (1-based) | uint8 (1 byte) | Uses declaration order: 1st field = 1, 2nd = 2, etc. |
-| `none` | No discriminator | 0 bytes | Disables discriminator. Application must track active field |
+Variants are numbered by their position in the oneof, so reordering variants changes the wire format of a `field_order` discriminator (`struct-frame diff` reports it).
 
-### Default Auto-Discriminator Behavior
+### Using discriminators
 
-| Oneof Field Types | Default Discriminator | Size |
-|-------------------|----------------------|------|
-| All messages with `msgid` | msgid (uint16) | 2 bytes |
-| Mixed or all primitives/enums | field_order (uint8) | 1 byte |
-
-**Examples:**
-
-```proto
-// Auto: Uses msgid discriminator (uint16) - all fields have msgid
-oneof command {
-  CommandA cmd_a = 1;  // msgid = 100
-  CommandB cmd_b = 2;  // msgid = 101
-}
-
-// Auto: Uses field_order discriminator (uint8) - primitives don't have msgid
-oneof value {
-  float temperature = 1;  // discriminator = 1
-  int32 pressure = 2;     // discriminator = 2
-}
-
-// Explicit: Force field_order even with messages that have msgid
-oneof payload {
-  option discriminator = field_order;
-  CommandA cmd_a = 1;  // discriminator = 1
-  CommandB cmd_b = 2;  // discriminator = 2
-}
-
-// Explicit: Disable discriminator entirely
-oneof data {
-  option discriminator = none;
-  uint32 integer_val = 1;
-  float float_val = 2;
-}
-```
-
-### Using Discriminators
-
-**With msgid discriminator:**
+**With a msgid discriminator:**
 ```cpp no-compile
 // C++ - check which message is active by message ID
 if (wrapper.command_discriminator == CommandA::MSG_ID) {
@@ -520,9 +506,7 @@ if (wrapper.command_discriminator == CommandA::MSG_ID) {
 }
 ```
 
-**With field_order discriminator:**
-
-For `field_order` discriminators, a typed enum is generated named `{MessageName}{OneofName}Field`:
+**With a field_order discriminator**, a typed enum named `{MessageName}{OneofName}Field` is generated:
 
 ```cpp no-compile
 // C++ - use the generated enum for type-safe discriminator checks
@@ -533,242 +517,183 @@ if (sensor.value_discriminator == SensorValueField::TEMPERATURE) {
 }
 ```
 
-### Multiple Oneofs
+### Multiple oneofs
 
-A message can contain multiple `oneof` fields:
+A message can contain several oneofs; each contributes its own union to the message:
 
-```proto
-message MultiUnionMessage {
-  option msgid = 50;
-  
+```sf
+message MultiUnionMessage @50 {
   oneof input {
-    float analog_value = 1;
-    bool digital_value = 2;
+    float analog_value;
+    bool  digital_value;
   }
-  
+
   oneof output {
-    uint16 pwm_duty = 3;
-    bool relay_state = 4;
+    uint16 pwm_duty;
+    bool   relay_state;
   }
 }
 ```
 
-Each `oneof` is independent and contributes its own union size to the message.
+## Variable oneofs
 
-## Variable Oneofs
+When the parent message is `[variable]`, any oneof with a discriminator is serialized in **trimmed** mode by default: only the active variant's bytes are transmitted. For forward-compatible protocols, the oneof can also be marked `[variable]` to add a length prefix.
 
-When a parent message has `option variable = true;`, any `oneof` with a discriminator is serialized in **trimmed** mode by default: only the active variant's bytes are transmitted. For forward-compatible protocols, the oneof can additionally be marked `option variable = true;` to include a length prefix.
+> **Requirement:** the parent message must be `[variable]` for either mode to take effect.
 
-> **Requirement:** The parent message must have `option variable = true;` for either encoding mode to take effect.
+### Trimmed mode (default for variable messages)
 
-### Trimmed Mode (Default for Variable Messages)
-
-A discriminated `oneof` inside a variable message transmits only the active variant's bytes. The receiver derives the size from the discriminator value.
+A discriminated oneof inside a variable message transmits only the active variant's bytes; the receiver derives the size from the discriminator.
 
 **Wire format:**
 ```
 [discriminator: 1–2 bytes] [variant_bytes: active variant size]
 ```
 
-```proto
-message SensorCommand {
-  option msgid = 30;
-  option variable = true;
+```sf
+struct SmallPayload {
+  uint8 a;
+  uint16 b;
+}
 
-  uint8 header = 1;
+struct LargePayload {
+  array<uint8, 32> data;
+}
 
-  oneof data {
-    option discriminator = "field_order";
-    // No 'option variable = true' — trimmed mode (default)
-    SmallPayload small = 1;   // 3 bytes on the wire when active
-    LargePayload large = 2;   // 32 bytes on the wire when active
+message SensorCommand @30 [variable] {
+  uint8 header;
+
+  oneof data [discriminator = field_order] {
+    SmallPayload small;   // 3 bytes on the wire when active
+    LargePayload large;   // 32 bytes on the wire when active
   }
 }
 ```
 
-### Variable Mode (Length-Prefixed)
+### Variable mode (length-prefixed)
 
-Add `option variable = true;` to the oneof for a fully forward-compatible format. A `uint16 LE` length field is inserted before the variant bytes, allowing receivers to skip unknown variants without error.
+Add `[variable]` to the oneof for a fully forward-compatible format: a `uint16` little-endian length is inserted before the variant bytes, so receivers can skip unknown variants.
 
 **Wire format:**
 ```
 [discriminator: 1–2 bytes] [payload_length: uint16 LE] [variant_bytes: payload_length bytes]
 ```
 
-```proto
-message CommandMessage {
-  option msgid = 20;
-  option variable = true;
+```sf
+message CommandMessage @20 [variable] {
+  uint8 header;
 
-  uint8 header = 1;
-
-  oneof data {
-    option discriminator = "field_order";
-    option variable = true;   // Add length prefix for forward compatibility
-    SmallPayload small = 1;   // 3 bytes on the wire
-    LargePayload large = 2;   // 32 bytes on the wire
+  oneof data [discriminator = field_order, variable] {
+    SmallPayload small;   // 3 bytes on the wire
+    LargePayload large;   // 32 bytes on the wire
   }
 }
 ```
 
-### Oneof Size Controls
+### Oneof size controls
 
-#### `option max_size = N;` — Reserve Space for Future Variants
+#### `max_size = N` — reserve space for future variants
 
-**Valid for non-variable (trimmed) oneofs only.**
+**Valid for trimmed (non-variable) oneofs only.** Increases the in-memory union buffer to at least N bytes without changing the wire size of existing variants. Use it when you plan to add larger variants later.
 
-Increases the in-memory union buffer to at least `N` bytes without changing the wire size of existing variants. Use this when you plan to add larger variants in future schema versions.
-
-```proto
-oneof data {
-  option discriminator = "field_order";
-  // Trimmed mode — no 'option variable = true'
-  option max_size = 64;   // Reserve 64 bytes in struct; future variants up to 64 bytes are safe
-  SmallPayload small = 1; // Still 3 bytes on the wire
+```sf
+message Reserved @31 [variable] {
+  oneof data [discriminator = field_order, max_size = 64] {
+    SmallPayload small;   // still 3 bytes on the wire
+  }
 }
 ```
 
-`max_size` is not applicable to variable oneofs (`option variable = true`), because variable encoding transmits each variant at its own size regardless of the in-memory union buffer.
+`max_size` does not apply to variable oneofs, because they transmit each variant at its own size regardless of the union buffer.
 
-#### `option min_size = N;` — Guarantee a Minimum Wire Payload Size
+#### `min_size = N` — guarantee a minimum wire payload size
 
-**Valid when the parent message is `variable = true`, and either:**
-- **the oneof has `option variable = true;`**, or
-- **the oneof is the only variable-length field in the message** (trimmed oneof as the trailing variable-size region).
+**Valid when the parent message is `[variable]` and either the oneof is `[variable]`, or the oneof is the only variable-length member of the message.** Pads the serialized payload to at least N bytes, for receivers built against an older schema that expect a fixed-length payload.
 
-Pads the serialized payload to at least `N` bytes. Use this when a receiver compiled against an older schema expects a fixed-length payload.
+On a variable oneof the padding is inside the length prefix; the receiver reads `payload_length` and ignores trailing zeros:
 
-**On a variable oneof** — padding is inside the length prefix; the receiver reads `payload_length` and ignores trailing zeros:
-```proto
-oneof data {
-  option discriminator = "field_order";
-  option variable = true;
-  option min_size = 8;    // Length prefix will report at least 8
-  SmallPayload small = 1; // 3 bytes → wire sends [disc][0x08 0x00][3 bytes + 5 zero bytes]
-  LargePayload large = 2; // 8 bytes → wire sends [disc][0x08 0x00][8 bytes]
+```sf
+message Padded @32 [variable] {
+  oneof data [discriminator = field_order, variable, min_size = 8] {
+    SmallPayload small;   // 3 bytes -> [disc][0x08 0x00][3 bytes + 5 zero bytes]
+    LargePayload large;   // 32 bytes -> transmitted as-is
+  }
 }
 ```
 
-**On a trimmed oneof** — padding extends the trimmed payload; the receiver derives the length from the known variant size:
-```proto
-oneof data {
-  option discriminator = "field_order";
-  // Trimmed mode
-  option min_size = 8;    // Trimmed wire payload is always at least 8 bytes
-  SmallPayload small = 1; // 3 bytes → padded to 8 bytes on the wire
-  LargePayload large = 2; // 8 bytes → transmitted as-is
-}
-```
+On a trimmed oneof the padding extends the trimmed payload; the receiver derives the length from the known variant size.
 
 **Rules:**
-- `min_size` must be ≤ the oneof's buffer size (`max(variant_sizes)`, or `max_size` if set). Use `max_size` to increase the buffer first if needed.
+- `min_size` must be ≤ the oneof's buffer size (the largest variant, or `max_size` if set).
 - Padding bytes are always zero.
 
 **Wire evolution of variants in a trimmed oneof:**
-- A variant message may grow through its own `extensions_start` block. Older senders omit the new bytes (a newer receiver fills them with schema defaults, or zero); newer senders add bytes that an older receiver ignores.
+- A variant struct may grow through its own `extensions` block. Older senders omit the new bytes (a newer receiver fills them with schema defaults, or zero); newer senders add bytes that an older receiver ignores.
 - This works only for the **last** oneof of a variable message: its payload runs to the end of the frame, so the receiver treats every remaining byte as the active variant. The buffer passed to `deserialize` must therefore be exactly the message payload (frame parsers already guarantee this).
 - A trimmed oneof followed by another oneof cannot evolve, because the receiver cannot tell where its payload ends. Do not add extension fields to variants of a non-trailing trimmed oneof.
 - `MIN_SIZE` is the smallest valid payload across the known variants. `struct-frame diff` reports growth of a trailing trimmed oneof through variant extension fields as wire-compatible.
 
-### Option Summary
+| Attribute | Applies to | Effect |
+|-----------|------------|--------|
+| `variable` | any discriminated oneof in a variable message | Adds a `uint16 LE` length prefix before the variant bytes |
+| `max_size = N` | trimmed (non-variable) oneofs | Sets the minimum in-memory union buffer size |
+| `min_size = N` | variable oneofs, or a trimmed oneof that is the only variable-length member | Pads the wire payload to at least N bytes |
 
-| Option | Applies to | Effect |
-|--------|-----------|--------|
-| `variable = true` | Any discriminated oneof in a variable message | Adds `uint16 LE` length prefix before variant bytes |
-| `max_size = N` | Non-variable (trimmed) oneofs only | Sets minimum in-memory union buffer size |
-| `min_size = N` | Variable oneofs, or trimmed oneof as the sole variable-length field in a variable message | Pads wire payload to at least N bytes |
+## Envelope messages
 
-## Envelope Messages (Oneof with is_envelope)
+Envelope messages wrap other messages for unified handling: a single message ID for routing, plus envelope-level metadata (sequence numbers, timestamps, priorities) and generated wrap/unwrap helpers.
 
-Envelope messages are container messages that wrap other messages for unified handling. They use the `is_envelope` option along with a `oneof` field to contain different message types.
-
-### Why Envelope Messages?
-
-Envelope messages are useful when:
-
-- You have multiple command/response types but want a single message ID for routing
-- You need envelope-level metadata (sequence numbers, timestamps, priorities)
-- You want type-safe wrappers with SDK helper methods
-- You're implementing a command/response protocol with multiple operation types
-
-### Defining Envelope Messages
-
-```proto
-// Individual command messages (each must have a msgid)
-message ADCCommand {
-  option msgid = 112;
-  uint8 channel = 1;
-  uint16 sample_rate = 2;
-  bool enable = 3;
+```sf
+// Individual command messages (each has an ID)
+message ADCCommand @112 {
+  uint8  channel;
+  uint16 sample_rate;
+  bool   enable;
 }
 
-message DACCommand {
-  option msgid = 113;
-  uint8 channel = 1;
-  uint16 output_value = 2;
-  bool enable = 3;
+message DACCommand @113 {
+  uint8  channel;
+  uint16 output_value;
+  bool   enable;
 }
 
-// Envelope message
-message CommandEnvelope {
-  option msgid = 200;
-  option is_envelope = true;  // Enables envelope helper methods
-  
+message CommandEnvelope @200 [envelope] {
   // Envelope-level fields (metadata)
-  uint32 sequence_number = 1;
-  uint8 priority = 2;
-  bool run_immediately = 3;
-  
-  // Union of all command types - exactly one will be populated
+  uint32 sequence_number;
+  uint8  priority;
+  bool   run_immediately;
+
+  // Exactly one of the commands
   oneof command {
-    ADCCommand adc = 1;
-    DACCommand dac = 2;
+    ADCCommand adc;
+    DACCommand dac;
   }
 }
 ```
 
-### Validation Rules
+### Validation rules
 
-Envelope messages have these requirements:
+- An envelope has exactly one `oneof`.
+- Every variant is a message or struct (not a primitive or enum).
+- With the `msgid` discriminator (the default when every variant has an ID), every variant must be a message with an ID.
 
-- Must have `option is_envelope = true`
-- Must have exactly one `oneof` field
-- All types in the `oneof` must be message types (not primitives or enums)
-- If using `msgid` discriminator (auto or explicit), all message types must have `msgid`
+### Discriminator behaviour
 
-### Discriminator Behavior
+Envelopes use the same discriminator system as ordinary oneofs, with these defaults:
 
-Envelope messages use the same discriminator system as regular `oneof` fields (see [Discriminator Options](#discriminator-options) above), but with the following defaults:
+| Discriminator mode | When used | Size | Value |
+|--------------------|-----------|------|-------|
+| `msgid` (default) | every variant has an ID | 2 bytes (`uint16`) | message ID of the wrapped payload |
+| `field_order` | a variant has no ID | 1 byte (`uint8`) | 1-based variant position |
 
-| Discriminator Mode | When Used | Size | Value |
-|-------------------|-----------|------|-------|
-| `msgid` (default) | All inner messages have `msgid` | 2 bytes (uint16) | Message ID of wrapped payload |
-| `field_order` | Any inner message lacks `msgid` | 1 byte (uint8) | 1-based field order index |
-
-You can explicitly set the discriminator mode on the oneof:
-
-```proto
-message CommandEnvelope {
-  option is_envelope = true;
-  
-  oneof command {
-    option discriminator = "field_order";  // Force field_order even if all have msgid
-    ADCCommand adc = 1;
-    DACCommand dac = 2;
-  }
-}
+**Wire format:**
+```
+[envelope fields...] [discriminator (1-2 bytes)] [union payload (largest variant)]
 ```
 
-**Wire Format:**
-```
-[envelope fields...] [discriminator (1-2 bytes)] [union payload (max field size)]
-```
+The discriminator is set by the generated `wrap()` helper and read during deserialization.
 
-The discriminator is automatically set by the `wrap()` method and read during deserialization.
-
-### Generated SDK Helper Methods
-
-The SDK generates convenient helper methods for envelope messages:
+### Generated SDK helper methods
 
 **C++ (msgid discriminator)**
 ```cpp no-compile
@@ -853,201 +778,142 @@ var envelope = CommandEnvelope.Wrap(adcCmd, 42, 1, true);
 var payloadId = envelope.GetPayloadMessageId();
 ```
 
-## Hardcoded Magic Bytes
+## Magic bytes
 
-In normal operation the generator calculates two magic bytes for each message based on the types, positions, and sizes of its base fields. These bytes seed the checksum and act as a structural fingerprint for the message.
+The generator computes two magic bytes for every message from the types, positions and sizes of its base fields. They seed the checksum and act as a structural fingerprint: a receiver built against a different layout rejects the frame.
 
-Use `option magic_bytes` to override this calculation with a fixed pair of values. This is useful when migrating an existing message across schema changes that would otherwise alter the magic bytes — for example, renaming an enum, moving an enum definition inline, or restructuring fields that are logically unchanged on the wire.
+`[magic = [B1, B2]]` overrides the computed bytes. Use it when an existing message must stay wire-compatible across a schema change that would otherwise alter the magic bytes — for example, renaming a struct that the message embeds, or moving an enum definition into the message.
 
-```proto
-message JobStatusMessage {
-  option msgid = 53;
-  option magic_bytes = "0xA3, 0x7F";  // Preserve magic from original schema
-
+```sf
+message JobStatusMessage @53 [magic = [0xA3, 0x7F]] {
   enum Status {
     JOB_START = 0;
-    JOB_END   = 1;
+    JOB_END = 1;
     JOB_ABORT = 2;
-    option extensions_start = 3;
-    JOB_FAILED   = 3;
-    JOB_END_WARN = 4;
+    extensions {
+      JOB_FAILED = 3;
+      JOB_END_WARN = 4;
+    }
   }
 
-  Status status = 1;
-  uint8  id       = 2;
-  uint8  job_type = 3;
-  double time     = 4;
+  Status status;
+  uint8  id;
+  uint8  job_type;
+  double time;
 }
 ```
 
 **Rules:**
-- Both values must be in the range `1–255` (zero bytes are rejected).
-- Values can be written in hex (`0xAB`) or decimal (`171`).
-- Exactly two comma-separated values are required.
-- Changing the override value triggers regeneration (it is included in the generation hash).
+- Exactly two values, each 1–255 (zero is reserved: it is the seed for messages the receiver does not know).
+- Values may be written in hex (`0xAB`) or decimal (`171`).
+- Changing the override regenerates the code (it is part of the generation hash).
 
-> **When to use this:** Prefer keeping the calculated magic bytes — they serve as automatic structural validation. Only use `magic_bytes` when you intentionally need two schema revisions to be treated as wire-compatible by existing parsers, and you have verified that the wire layout is genuinely unchanged.
+> **When to use this:** prefer the computed magic bytes — they validate the structure automatically. Only override them when you intentionally need two schema revisions to be treated as wire-compatible by existing parsers, and you have verified that the wire layout is genuinely unchanged.
 
-## Syntax Details
+The computed magic bytes include the *name* of every embedded struct or message type, so renaming a type that other messages embed changes their magic bytes; `struct-frame diff` reports this.
 
-- **One `package` per file.** Declare `package` first; `option pkgid` and `import` follow it. Several files may belong to the same package.
-- **Imports** are resolved relative to the directory of the schema given on the command line first, then relative to the importing file. A type is looked up in its own package and then in the packages that file imports directly; qualify it (`other.Type`) when two imported packages define the same name.
-- **Qualified option names.** Field options also accept the forms `(sf.size)`, `(struct_frame.size)` and likewise for `max_size`, `element_size`, `default` and `flatten`.
-- **`option envelope = true`** is accepted as an alias of `is_envelope`.
-- **Discriminator values** are `auto`, `msgid`, `field_order` and `none`; `false`, `off` and `disabled` are accepted as aliases of `none`.
-- **The extension marker.** Inside a `oneof`, a standalone comment line that *starts with* `Extension::` marks the following variant as the first extension variant (equivalent to `option extensions_start`). A trailing comment on a variant, or prose that merely mentions the marker, is ignored.
-- **Reserved words.** Field, oneof and variant names that are reserved words in a target language (for example `class`, `self`, `delete`, `fn`) are rejected with an error naming the language; rename the field or map it with `--name-overrides`.
+## Wire evolution (extensions)
 
-## Validation Rules
+An `extensions { ... }` block at the end of a message (or struct) holds fields added in later schema versions. Older receivers still accept the frames of newer senders, and newer receivers accept the shorter frames of older senders.
 
-The generator enforces:
-
-- The file must parse: a syntax error, a missing import or a duplicate message, enum, oneof or field name is an error (and the generator exits non-zero)
-- Message IDs unique within package (0-65535 without a package ID, 0-255 with one), and unique across packages once the package ID is applied
-- Package IDs unique across packages (0-255); every package needs one when several are compiled together, except packages that inherit their importer's
-- A type name must resolve unambiguously: types come from the current package or its directly imported packages, and a name defined in two imported packages must be qualified (`pkg.Type`)
-- Unknown options (a typo such as `[defualt = 5]` or `option msg_id`) produce a warning with a suggestion and are ignored
-- Enum values must be distinct and fit one byte (0-255)
-- `size` and `max_size` are mutually exclusive; `element_size` only applies to repeated `string`/`bytes`
-- A `oneof` needs at least one variant, and `min_size` may not exceed `max_size`
-- Variants of a `msgid`-discriminated oneof must have distinct message IDs
-- Generated names must not collide or be reserved words in the target languages (see [Generated Names](#generated-names)); use `--name-overrides` to rename
-- Field numbers must be `1..N` in declaration order (no gaps, no duplicates)
-- All arrays must have size or max_size
-- All strings must have size or max_size
-- String arrays need both max_size and element_size
-- Array and string `max_size` up to 65535 (the count/length prefix is 1 byte up to 255, otherwise 2 bytes)
-- Envelope messages must have exactly one oneof field
-- Envelope oneof fields must be message types (not primitives/enums)
-- Envelope oneof using `msgid` discriminator must have messages with msgid
-- For message and oneof scopes, `extensions_start` must be ≥ 2 (at least one non-extension base field required)
-- For message and oneof scopes, `extensions_start` must equal an existing field number in the same scope
-- `extensions_start` is also accepted inside enums; enum entries with values `>= extensions_start` are excluded from the generation hash, but remain generated enum members
-- Message-level `extensions_start` cannot be combined with `oneof` fields — the wire serializes fields before oneofs, so extension fields would not be trailing. Use `option extensions_start` *inside* the `oneof` to add extension variants instead
-
-## Wire Evolution (Extension Fields)
-
-`option extensions_start = N;` allows a message (or a `oneof` inside a message) to be extended with new fields in the future without breaking older receivers. It is also accepted inside enums to mark future enum values without changing the wire representation.
-
-### How it works
-
-- Fields with number `< extensions_start` are **base fields** — always present on the wire, always covered by the magic-byte checksum seed.
-- Fields with number `>= extensions_start` are **extension fields** — newer senders include them; older receivers that received a shorter payload fill them with their [schema default](#field-default-values) on reception (zero if the field has no declared default — this is the behavior for every extension field until you add `[default = ...]` to it).
-- Enum values with number `>= extensions_start` are **extension values** — they are still emitted by every generator and still occupy the enum's normal one-byte representation. Unlike message and oneof scopes, enum scope does not require `N` to match an existing value or be at least `2`.
-- The magic bytes (CRC seed) are computed only from base fields. Adding extension fields never changes the magic bytes, so older parsers still validate the base portion correctly.
-- Extension bytes are still mixed into the full CRC *after* the magic seed, so corruption of extension data is detected.
-
-> **Profile requirement:** Truncated/extended payloads can only be detected when the frame carries a length field. Use a length-bearing profile (Standard, Bulk, or Network). On profiles without a length field (Sensor, IPC) extension fields are treated as ordinary fixed bytes — both sender and receiver must agree on the full message size.
-
-### Message-level extensions
-
-Declare `option extensions_start = N;` anywhere in the message body, then list extension fields with numbers `>= N`. Messages containing a `oneof` cannot use message-level extension fields (the wire serializes fields before oneofs, so the extension bytes would not be trailing) — use [oneof-level extensions](#oneof-level-extensions-extension-variants) instead:
-
-```proto
-message StatusReport {
-  option msgid = 10;
-
+```sf
+message StatusReport @10 {
   // Base fields (always on the wire)
-  uint32 device_id    = 1;
-  uint8  status_code  = 2;
-  uint16 error_flags  = 3;
+  uint32 device_id;
+  uint8  status_code;
+  uint16 error_flags;
 
-  // Extension fields — present in v2+ firmware; older receivers zero-fill them
-  option extensions_start = 4;
-  uint32 uptime_seconds    = 4;
-  float  cpu_temperature   = 5;
-  string firmware_version  = 6 [max_size=32];
-}
-```
-
-**What changes on the wire:**
-
-| Sender | Receiver | Result |
-|--------|----------|--------|
-| v1 (base only) | v1 (base only) | ✓ Normal fixed-size frame |
-| v2 (base + ext) | v1 (base only) | ✓ Receiver ignores extra trailing bytes |
-| v1 (base only) | v2 (base + ext) | ✓ Receiver fills extension fields with their schema default (zero if none declared) |
-| v2 (base + ext) | v2 (base + ext) | ✓ Full round-trip |
-
-### Oneof-level extensions (extension variants)
-
-A `oneof` block can also have extension variants. Older receivers that do not know about the new discriminator value simply ignore the unknown variant.
-
-```proto
-message AdcCommand {
-  option msgid = 100;
-  uint8 channel = 1;
-}
-
-message DacCommand {
-  option msgid = 101;
-  uint8 channel = 1;
-}
-
-// Added in v2
-message PwmCommand {
-  option msgid = 102;
-  uint8 channel = 1;
-  uint16 duty_cycle = 2;
-}
-
-// Added in v3
-message I2cCommand {
-  option msgid = 103;
-  uint8 address = 1;
-  uint8 reg = 2;
-}
-
-message JobMessage {
-  option msgid = 200;
-
-  bool run_immediately = 1;
-
-  oneof job {
-    option discriminator = "field_order";
-
-    // Base variants — understood by all receiver versions
-    AdcCommand adc = 1;
-    DacCommand dac = 2;
-
-    // Extension variants — receivers that do not know these simply report
-    // an unknown discriminator and skip the payload.
-    option extensions_start = 3;
-    PwmCommand pwm = 3;
-    I2cCommand i2c = 4;
+  // Added in firmware v2
+  extensions {
+    uint32     uptime_seconds;
+    float      cpu_temperature;
+    string<32> firmware_version;
   }
 }
 ```
 
-`extensions_start` inside a `oneof` works identically to the message-level option:
+### How it works
 
-- **base_size** of the message uses the largest *base* variant size, not the largest extension variant size.
-- Magic bytes are computed from base variants only.
-- The discriminator field itself is always a base field (present in every frame).
+- Fields before the block are **base fields** — always present on the wire, always covered by the magic bytes.
+- Fields in the block are **extension fields** — newer senders include them; a receiver that gets a shorter payload fills them with their [default](#default-values) (zero if the field has none).
+- The magic bytes are computed only from base fields, so adding extension fields never changes them.
+- Extension bytes are still covered by the frame's CRC (after the magic seed), so corruption of extension data is detected.
+- Later versions append to the same block. A field must never move into or out of the block — that changes the base layout.
 
-### Enum-level extensions
+> **Profile requirement:** truncated or extended payloads can only be detected when the frame carries a length field. Use a length-bearing profile (Standard, Bulk or Network). On profiles without a length field (Sensor, IPC) extension fields are ordinary fixed bytes and both sides must agree on the full message size.
 
-An enum can use `extensions_start` to mark values introduced by newer schema versions:
+| Sender | Receiver | Result |
+|--------|----------|--------|
+| v1 (base only) | v1 (base only) | ✓ Normal frame |
+| v2 (base + ext) | v1 (base only) | ✓ Receiver ignores the extra trailing bytes |
+| v1 (base only) | v2 (base + ext) | ✓ Receiver fills extension fields with their defaults |
+| v2 (base + ext) | v2 (base + ext) | ✓ Full round trip |
 
-```proto
-enum JobStatus {
-  option extensions_start = 3;
+A message with oneofs cannot have a message-level `extensions` block: oneofs are encoded after the fields, so extension fields would not be trailing. Add extension *variants* to the oneof instead.
 
-  UNKNOWN = 0;
-  QUEUED  = 1;
-  RUNNING = 2;
+### Oneof extensions (extension variants)
 
-  // Added in a later schema version
-  COMPLETE = 3;
-  FAILED   = 4;
+An `extensions` block inside a oneof holds variants added later. Receivers that do not know a new variant report an unknown discriminator and skip its payload.
+
+```sf
+message AdcCommand @100 {
+  uint8 channel;
+}
+
+message DacCommand @101 {
+  uint8 channel;
+}
+
+message PwmCommand @102 {   // added in v2
+  uint8  channel;
+  uint16 duty_cycle;
+}
+
+message I2cCommand @103 {   // added in v3
+  uint8 address;
+  uint8 reg;
+}
+
+message JobMessage @200 {
+  bool run_immediately;
+
+  oneof job [discriminator = field_order] {
+    // Base variants - understood by every receiver version
+    AdcCommand adc;
+    DacCommand dac;
+
+    extensions {
+      PwmCommand pwm;
+      I2cCommand i2c;
+    }
+  }
 }
 ```
 
-This option does not add extension bytes or change enum serialization: enum fields remain one byte, and all declared values are generated. Values at or above `extensions_start` are omitted from the generation hash, so adding them does not change that hash. The enum parser accepts an integer value without requiring it to match an existing enum member or to be at least `2`.
+- The message's base size uses the largest *base* variant, not the largest extension variant.
+- The magic bytes are computed from base variants only.
+- The discriminator is always a base field (present in every frame).
 
-### `BASE_SIZE` constant
+### Enum extensions
 
-The generator emits a `BASE_SIZE` constant alongside `MAX_SIZE` for every message. For messages without extensions `BASE_SIZE == MAX_SIZE`. You can use `BASE_SIZE` in your application to compute how many bytes a legacy sender would transmit:
+An `extensions` block in an enum marks values added in later versions. It does not change the wire representation (enums stay one byte) and every value is still generated; values in the block are excluded from the generation hash. They must be larger than every base value.
+
+```sf
+enum JobStatus {
+  UNKNOWN = 0;
+  QUEUED = 1;
+  RUNNING = 2;
+
+  extensions {
+    COMPLETE = 3;
+    FAILED = 4;
+  }
+}
+```
+
+### `BASE_SIZE`
+
+Every message has a `BASE_SIZE` constant next to `MAX_SIZE`. Without extensions they are equal; `BASE_SIZE` is how many bytes a sender without the extension fields transmits.
 
 **C**
 ```c
@@ -1065,75 +931,63 @@ print(StatusReport.MAX_SIZE)   # 48 (+ uptime_seconds 4 + cpu_temperature 4 + fi
 
 ### Checking wire compatibility
 
-Run [`struct_frame diff OLD.sf NEW.sf`](/reference/cli-reference/#schema-diff-wire-compatibility-check) in CI to verify that a new revision only adds extensions: it reports changed message IDs, magic bytes, field types and numbers, enum values, extension blocks and order-sensitive oneof variants, and lists source-only renames and file moves separately.
+Run [`struct-frame diff OLD.sf NEW.sf`](/reference/cli-reference/#schema-diff-wire-compatibility-check) in CI to verify that a new revision only adds extensions. It reports changed message IDs, magic bytes, field types and order, enum values, extension blocks and order-sensitive oneof variants, and lists source-only renames and file moves separately.
 
-### Complete wire-evolution example
+## Comments and documentation
 
-```proto
-package device_control;
+Comments come in two kinds:
 
-// v1 command — base fields only
-// v2 adds extension fields; v1 receivers ignore them gracefully
-message DeviceCommand {
-  option msgid = 1;
+| Comment | Kind |
+|---------|------|
+| `/// text` and `/** text */` | **Doc comment** — documents a declaration and is copied into the generated code |
+| `// text` and `/* text */` | **Private comment** — stays in the schema |
 
-  // Base fields: always present, define the magic bytes
-  uint8  device_id  = 1;
-  uint8  command    = 2;
-  uint16 param      = 3;
+Every doc comment has exactly one owner, decided by where it is written:
 
-  // Extension fields: v2+ only; v1 receivers zero-fill on reception
-  option extensions_start = 4;
-  uint32 timeout_ms        = 4;
-  uint8  retry_count       = 5;
-}
+| Where | Documents |
+|-------|-----------|
+| Before the `package` declaration | The file (license headers, overviews); emitted at the top of each generated file |
+| On the lines directly before a declaration | That declaration (message, struct, enum, entry, field, oneof, variant, constant, service, rpc) |
+| On the same line, after a declaration | That declaration (for a block, the line of its `{` or `}`) |
 
-// Envelope that adds new job types without breaking v1 dispatchers
-message JobEnvelope {
-  option msgid = 50;
-  option is_envelope = true;
-
-  uint32 sequence = 1;
-
-  oneof job {
-    // v1 job types
-    DeviceCommand device_cmd = 1;
-
-    // v2 job types — older dispatchers see an unknown discriminator
-    option extensions_start = 2;
-    DeviceCommand maintenance_cmd = 2;
-  }
-}
-```
-
-## Comments and Documentation
-
-Comments in a `.sf` file become documentation in the generated code. Every comment has exactly one owner, decided by where it is written:
-
-| Kind | Where it is written | Documents |
-|------|---------------------|-----------|
-| **File docs** | Own-line comments before the `package` statement | The generated file (license headers, overviews). They are emitted in each generated file's header and are **never** attached to the first declaration. |
-| **Leading docs** | Own-line comments directly before a message, enum, enum value, field, oneof or oneof variant | The next declaration |
-| **Trailing docs** | A comment on the same line, after a declaration | That declaration |
-
-```proto
-// Copyright (c) Example Corp.      <- file docs
-// Robot telemetry definitions.     <- file docs
+```sf
+/// Copyright (c) Example Corp.     <- file docs
+/// Robot telemetry definitions.    <- file docs
 package robot;
 
-// Current robot state.             <- leading docs of RobotState
+/// Current robot state.            <- docs of RobotState
 enum RobotState {
-  IDLE = 0;      // Waiting         <- trailing docs of IDLE
-  // Driving.                       <- leading docs of MOVING
+  IDLE = 0;      /// Waiting         <- docs of IDLE
+  // TODO: add CHARGING              <- private, not in generated code
+  /// Driving.                       <- docs of MOVING
   MOVING = 1;
 }
 ```
 
-Comments before an `option` or `import` statement, and comments left dangling at the end of a scope, document nothing and are dropped. Multi-line comments keep their line order in every generated language.
+A doc comment that documents nothing (for example one before an `import`, or at the end of a block) gets a warning. Multi-line doc comments keep their line order in every generated language.
 
-Documentation takes part in incremental generation: changing any comment that reaches generated output (including a file header) regenerates the files even though the schema structure is unchanged. Use `--force` only to regenerate unchanged input.
+Documentation takes part in incremental generation: changing a doc comment regenerates the files even though the schema structure is unchanged. Private comments never trigger regeneration. Use `--force` only to regenerate unchanged input.
 
-## Generated Names
+## Services
+
+A `service` declares request/response calls between nodes:
+
+```sf
+service Config {
+  /// Read the device configuration.
+  rpc get(GetConfig) -> DeviceConfig;
+  /// Restart the device; acknowledged without a response message.
+  rpc reboot(Reboot) [idempotent];
+}
+```
+
+The request and response are messages with IDs. An `rpc` without `->` is acknowledged with a status only.
+
+:::caution
+Service declarations are parsed and checked, but code generation for them is not available yet: a schema that declares a service is rejected for now.
+:::
+
+## Generated names
 
 Source identifiers are converted to each language's conventions with one shared tokenizer. It splits on `_`, `-`, lower→upper transitions and acronym boundaries (`BLEHost` → `BLE` + `Host`), so mixed-case names keep their acronyms instead of being flattened:
 
@@ -1147,9 +1001,9 @@ Source identifiers are converted to each language's conventions with one shared 
 
 TypeScript/JavaScript property accessors start with a lower-case letter (`gateCurrent`, `bleHostId`) but keep the remaining acronym casing (`BLEHost` stays `BLEHost`).
 
-Names written entirely in one case (`BLE_HOST_OK`, `ble_host`) carry no acronym information, so they are title-cased (`BleHostOk`) as before.
+Names written entirely in one case (`BLE_HOST_OK`, `ble_host`) carry no acronym information, so they are title-cased (`BleHostOk`).
 
-> **Upgrading from 0.10.x:** acronym-aware conversion changes the generated names of identifiers that mix cases. For example a field `sensorId` is now `SensorId` in C# (previously `Sensorid`), an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (previously `GATECURRENT`) and `GateCurrent` in C++ (previously `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. To keep an old spelling, pin it with `--name-overrides`.
+Field, oneof and variant names that are reserved words in a target language (for example `class`, `self`, `delete`, `fn`) are rejected with an error naming the language; rename the field or map it with `--name-overrides`. The struct-frame keywords themselves (`message`, `extensions`, `rpc`, …) are valid field names.
 
 When no heuristic can produce the name you want, pass `--name-overrides FILE` with a JSON file. Overrides are keyed by `all` or a language (`c`, `cpp`, `ts`, `js`, `py`, `gql`, `csharp`, `rust`); each entry maps a source name path to the exact generated name:
 
@@ -1163,41 +1017,102 @@ When no heuristic can produce the name you want, pass `--name-overrides FILE` wi
 
 Keys are dotted source paths (`Name`, `Message.field`, `Message.oneof.variant`, `Enum.ENTRY`, `Message.Nested`, `Message.Nested.ENTRY`), optionally prefixed with the package. A language entry wins over `all`, and a package-qualified key wins over an unqualified one. Unknown keys, invalid identifiers and collisions are errors. Overrides only rename generated symbols: message IDs, magic bytes and the wire layout are unchanged, and the overrides file is part of the generation hash.
 
-## Output Ordering
+## Output ordering
 
 Generated output does not depend on the order in which files were imported or declarations were written, so reorganizing a schema into several files produces a reviewable diff:
 
 - Packages are emitted dependency-first (imported packages before importers).
 - Within a package, enums are sorted by name and messages are emitted dependencies-first, with ties broken by name.
-- **Order-sensitive content is never reordered:** fields, oneof variants (their `field_order` discriminator values are the 1-based declaration index), enum entries and message-nested enums keep their declaration order.
+- **Order-sensitive content is never reordered:** fields, oneof variants (their `field_order` discriminator values are their 1-based position), enum entries and message-nested enums keep their declaration order.
 
-## Complete Example
+## Errors
 
-```proto
-package robot_control;
+Errors and warnings name the file, line and column, show the source line and usually suggest a fix:
 
-enum RobotState {
-  IDLE = 0;
-  MOVING = 1;
-  ERROR = 2;
-}
-
-message Position {
-  double lat = 1;
-  double lon = 2;
-  float altitude = 3;
-}
-
-message RobotStatus {
-  option msgid = 1;
-  
-  uint32 robot_id = 1;
-  string name = 2 [size=16];
-  RobotState state = 3;
-  Position current_pos = 4;
-  float battery_percent = 5;
-  repeated float joint_angles = 6 [size=6];
-  string error_msg = 7 [max_size=128];
-}
+```
+robot.sf:12:3: error[SF0320]: 'string' needs a capacity
+   12 |   string name;
+      |   ^^^^^^
+  = hint: write string<N> (up to N bytes) or fixed_string<N> (exactly N)
 ```
 
+The generator rejects, among others:
+
+- syntax errors, unknown types, attributes and constants, and duplicate declarations;
+- message IDs that are not unique within a package (0–65535, or 0–255 with a package ID) or across packages once package IDs are applied;
+- package IDs that are not unique, and missing package IDs when several packages are compiled together (unless inherited);
+- ambiguous type names (a name defined in two imported packages must be qualified);
+- enum values outside 0–255 or not unique;
+- sizes outside 1–65535;
+- defaults of the wrong type, out of range, too long, or on unsupported fields;
+- a oneof without variants, or with `min_size` greater than `max_size`;
+- variants of a `msgid`-discriminated oneof that share a message ID;
+- envelopes without exactly one oneof, or with variants that are not messages;
+- an `extensions` block that is not last, that has no base field before it, or that is combined with a oneof at message level;
+- generated names that collide or are reserved words in a target language (see [Generated names](#generated-names)).
+
+## Migrating from the old syntax
+
+`struct-frame migrate` converts schemas written in the earlier proto-style syntax. It needs the optional `migrate` extra:
+
+```bash
+pip install 'struct-frame[migrate]'
+struct-frame migrate robot.sf --in-place --recursive   # convert robot.sf and its imports
+struct-frame migrate robot.sf                          # print the converted file
+struct-frame migrate *.sf --check                      # exit 1 if any file uses the old syntax
+```
+
+The converted file builds exactly the same model: the same messages, message and package IDs, field layout, magic bytes, defaults and generated code. Comments that documented a declaration become `///` doc comments; comments the old front end ignored stay as `//` comments. Constructs that struct-frame never supported (`map`, `reserved`, nested messages, `service` in the old syntax) are reported and left as comments.
+
+| Old syntax | New syntax |
+|------------|------------|
+| `option pkgid = 5;` | `package name @5;` |
+| `message M { option msgid = 1; ... }` | `message M @1 { ... }` |
+| `message P { ... }` without `msgid` | `struct P { ... }` |
+| `uint32 x = 1;` (field number) | `uint32 x;` |
+| `uint32 x = 1 [default = 5];` | `uint32 x = 5;` |
+| `string s = 1 [size = 16];` | `fixed_string<16> s;` |
+| `string s = 1 [max_size = 64];` | `string<64> s;` |
+| `repeated uint8 a = 1 [size = 8];` | `array<uint8, 8> a;` |
+| `repeated uint8 a = 1 [max_size = 100];` | `vector<uint8, 100> a;` |
+| `repeated string n = 1 [max_size = 10, element_size = 32];` | `vector<fixed_string<32>, 10> n;` |
+| `option variable = true;` | `[variable]` attribute |
+| `option is_envelope = true;` | `[envelope]` attribute |
+| `option magic_bytes = "0xA3, 0x7F";` | `[magic = [0xA3, 0x7F]]` |
+| `option discriminator = field_order;` | `oneof o [discriminator = field_order] { ... }` |
+| `option extensions_start = N;` / `// Extension::` | `extensions { ... }` block |
+| `[flatten = true]` | `[flatten]` |
+| `// comment` documenting a declaration | `/// comment` |
+
+To compare a schema from before the change with one after it, `struct-frame diff` reads old-syntax files too when the `migrate` extra is installed.
+
+## Grammar
+
+```
+file       = package import* decl*
+package    = "package" NAME ("@" value)? ";"
+import     = "import" STRING ";"
+decl       = const | enum | struct | message | service
+const      = "const" type NAME "=" value ";"
+enum       = "enum" NAME "{" (entry | "extensions" "{" entry* "}")* "}"
+entry      = NAME "=" value ";"
+struct     = "struct" NAME attrs? "{" member* "}"
+message    = "message" NAME "@" value attrs? "{" member* "}"
+member     = field | oneof | enum | "extensions" "{" field* "}"
+field      = type NAME attrs? ("=" value)? ";"
+oneof      = "oneof" NAME attrs? "{" (variant | "extensions" "{" variant* "}")* "}"
+variant    = type NAME attrs? ";"
+service    = "service" NAME "{" rpc* "}"
+rpc        = "rpc" NAME "(" type ")" ("->" type)? attrs? ";"
+type       = ("array" | "arr" | "vector" | "vec") "<" type "," size ">"
+           | ("string" | "bytes" | "fixed_string" | "fstring" | "fixed_bytes" | "fbytes") "<" size ">"
+           | QUALIFIED_NAME
+size       = INTEGER | QUALIFIED_NAME
+attrs      = "[" attr ("," attr)* ","? "]"
+attr       = NAME ("=" value)?
+value      = INTEGER | FLOAT | STRING | "true" | "false" | QUALIFIED_NAME | "-" value
+           | "[" (value ("," value)* ","?)? "]"
+           | "{" (NAME ":" value ("," NAME ":" value)* ","?)? "}"
+```
+
+`QUALIFIED_NAME` is one or more names joined by `.`. Integers are decimal, hex (`0x`), binary (`0b`) or octal (`0o`), with optional `_` separators; a decimal integer has no leading zeros. A `;` after a closing `}` is accepted; `struct-frame fmt` removes it.

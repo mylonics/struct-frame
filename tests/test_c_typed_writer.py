@@ -20,32 +20,38 @@ import pytest
 
 from test_utils import run_generator
 
-MAIN_SF = """package tw;
-option pkgid = 0;  // IDs stay <= 255, so every profile can carry them
+MAIN_SF = """\
+package tw @0;  // IDs stay <= 255, so every profile can carry them
+
 import "twp.sf";
 
-message Fixed { option msgid = 1; uint16 a = 1; float b = 2; }
-
-message Var {
-  option msgid = 2;
-  option variable = true;
-  uint8 n = 1;
-  string s = 2 [max_size=16];
-  repeated uint16 v = 3 [max_size=4];
+message Fixed @1 {
+  uint16 a;
+  float b;
 }
 
-message Ext {
-  option msgid = 3;
-  uint8 a = 1;
-  uint8 c = 2;
-  option extensions_start = 3;
-  uint32 b = 3;
+message Var @2 [variable] {
+  uint8 n;
+  string<16> s;
+  vector<uint16, 4> v;
+}
+
+message Ext @3 {
+  uint8 a;
+  uint8 c;
+
+  extensions {
+    uint32 b;
+  }
 }
 """
 
-PKG_SF = """package twp;
-option pkgid = 5;
-message P { option msgid = 7; uint32 x = 1; }
+PKG_SF = """\
+package twp @5;
+
+message P @7 {
+  uint32 x;
+}
 """
 
 PROFILES = ("STANDARD", "SENSOR", "IPC", "BULK", "NETWORK")

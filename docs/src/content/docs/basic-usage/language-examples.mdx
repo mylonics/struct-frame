@@ -11,13 +11,12 @@ This page shows the same steps in every language: create a message, write it int
 
 Examples use this schema (`example.sf`):
 
-```proto
+```sf
 package example;
 
-message Status {
-  option msgid = 1;
-  uint32 id = 1;
-  float value = 2;
+message Status @1 {
+  uint32 id;
+  float value;
 }
 ```
 
@@ -451,10 +450,9 @@ All profiles support the same API: pass a different profile configuration (`PROF
 
 Example with a bounded array:
 
-```proto
-message SensorData {
-  option msgid = 2;
-  repeated float readings = 1 [max_size=10];
+```sf
+message SensorData @2 {
+  vector<float, 10> readings;
 }
 ```
 
@@ -511,16 +509,15 @@ Serialization is the same as for any other message; variable messages encode onl
 
 Example with a nested message:
 
-```proto
-message Position {
-  double lat = 1;
-  double lon = 2;
+```sf
+struct Position {
+  double lat;
+  double lon;
 }
 
-message Vehicle {
-  option msgid = 3;
-  uint32 id = 1;
-  Position pos = 2;
+message Vehicle @3 {
+  uint32 id;
+  Position pos;
 }
 ```
 

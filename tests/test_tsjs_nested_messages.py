@@ -17,13 +17,18 @@ import pytest
 
 from test_utils import REPO_ROOT, run_generator
 
-SCHEMA = """package nest;
-message Position { double lat = 1; double lon = 2; }
-message Vehicle {
-  option msgid = 3;
-  uint32 id = 1;
-  Position pos = 2;
-  repeated Position history = 3 [max_size=2];
+SCHEMA = """\
+package nest;
+
+struct Position {
+  double lat;
+  double lon;
+}
+
+message Vehicle @3 {
+  uint32 id;
+  Position pos;
+  vector<Position, 2> history;
 }
 """
 

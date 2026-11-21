@@ -59,12 +59,14 @@ export {
     PAYLOAD_SEQ_CONFIG,
     PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG,
     PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
+    PAYLOAD_SYSTEM_CONFIG,
 } from './payload-types';
 
 // Frame profiles - Pre-defined Header + Payload combinations
 export type { FrameProfileConfig, EncodeOptions, MessageInfo, GetMessageInfo } from './frame-profiles';
 export {
     // Profile helper functions
+    createProfileConfig,
     profileHeaderSize,
     profileFooterSize,
     profileOverhead,
@@ -85,3 +87,19 @@ export {
     AccumulatingReaderState,
 } from './frame-profiles';
 export type { ParserDiagnostics } from './frame-profiles';
+
+// System frames - struct-frame's own messages (payload type 9, start byte 0x79)
+export type { SystemMessage, SystemEncodeOptions } from './system-frames';
+export {
+    SYSTEM_PAYLOAD_TYPE_VALUE,
+    SYSTEM_START_BYTE,
+    MAX_TAIL as SYSTEM_MAX_TAIL,
+    TAIL_MESSAGES as SYSTEM_TAIL_MESSAGES,
+    supportsSystemFrames,
+    systemProfileConfig,
+    systemMessageInfo,
+    systemMessageClass,
+    encodeSystemMessage,
+    decodeSystemMessage,
+} from './system-frames';
+export * as sfSystem from './sf-system.structframe';

@@ -10,6 +10,7 @@ but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 
 from struct_frame import version, NamingStyleC, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -17,6 +18,7 @@ from struct_frame.ts_js_base import (
     BaseEnumGen,
     to_camel_case,
     needs_default_bytes,
+    field_props_literal,
     ts_default_bytes_literal,
     # New class-based generation utilities
     TYPE_SIZES,
@@ -245,6 +247,8 @@ class MessageJsClassGen():
         # back the schema default for any field it didn't explicitly set.
         if needs_default_bytes(msg):
             result += f'  static _defaultBytes = {ts_default_bytes_literal(msg.default_bytes)};\n'
+        # Accessor properties of each schema field (used by isDefault(field)).
+        result += f'  static _fieldProps = {field_props_literal(msg)};\n'
 
         result += '\n'
         
@@ -629,14 +633,26 @@ class MessageJsClassGen():
                 else:
                     result += f'    buffer.writeUInt8({name}Count, offset++);\n'
                 
-                write_method = WRITE_METHODS.get(field_type if not field.is_enum else "uint8", "_writeUInt8")
-                write_method_name = write_method.replace("_write", "write")
-                # Node.js Buffer uses writeFloatLE / writeDoubleLE (not writeFloat32LE / writeFloat64LE)
-                write_method_name = write_method_name.replace("writeFloat32LE", "writeFloatLE").replace("writeFloat64LE", "writeDoubleLE")
-                result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                result += f'      buffer.{write_method_name}(this.{name}Data[i], offset);\n'
-                result += f'      offset += {element_size};\n'
-                result += f'    }}\n'
+                if field_type not in type_sizes and field_type not in ("string", "bytes") and not field.is_enum:
+                    # Nested struct array: copy each element's bytes
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      const nested = this.{name}Data[i];\n'
+                    result += f'      nested._buffer.copy(buffer, offset);\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+                elif field_type in ("string", "bytes"):
+                    # String array: each element is stored at its full size
+                    result += f'    this._buffer.copy(buffer, offset, {msg_offset + count_bytes}, {msg_offset + count_bytes} + {name}Count * {element_size});\n'
+                    result += f'    offset += {name}Count * {element_size};\n'
+                else:
+                    write_method = WRITE_METHODS.get(field_type if not field.is_enum else "uint8", "_writeUInt8")
+                    write_method_name = write_method.replace("_write", "write")
+                    # Node.js Buffer uses writeFloatLE / writeDoubleLE (not writeFloat32LE / writeFloat64LE)
+                    write_method_name = write_method_name.replace("writeFloat32LE", "writeFloatLE").replace("writeFloat64LE", "writeDoubleLE")
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      buffer.{write_method_name}(this.{name}Data[i], offset);\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
             elif field_type in ("string", "bytes") and field.max_size is not None:
                 length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
@@ -1097,6 +1113,18 @@ class FileJsGen():
             yield f'/* Package ID for extended message IDs */\n'
             yield f'const PACKAGE_ID = {package.package_id};\n'
             yield f'module.exports.PACKAGE_ID = PACKAGE_ID;\n\n'
+
+        consts = _lit.package_consts(package)
+        if consts:
+            yield '/* Constants */\n'
+            for const in consts:
+                lines = _lit.doc_lines(const.comments)
+                if lines:
+                    yield '/**\n' + ''.join(f' * {line}'.rstrip() + '\n' for line in lines) + ' */\n'
+                cname = _lit.const_name(const)
+                yield f'const {cname} = {_lit.js_scalar(const.const_type, const.value)};\n'
+                yield f'module.exports.{cname} = {cname};\n'
+            yield '\n'
 
         # include additional header files here if available in the future
 

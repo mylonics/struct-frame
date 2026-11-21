@@ -1,0 +1,18 @@
+// Payloads used by the benchmarks. Sizes match the three scenarios:
+// 32 bytes (standard), 512 bytes (bulk) and 96 bytes (network).
+package bench;
+
+message Small {
+  option msgid = 1;
+  repeated uint8 data = 1 [size=32];
+}
+
+message Large {
+  option msgid = 2;
+  repeated uint8 data = 1 [size=512];
+}
+
+message Medium {
+  option msgid = 3;
+  repeated uint8 data = 1 [size=96];
+}

@@ -1,0 +1,163 @@
+// Test file for envelope/container message feature
+// Demonstrates the is_envelope option for wrapping multiple message types
+package envelope_test;
+
+// ============================================================================
+// Command Messages - These are the individual command types
+// ============================================================================
+
+// ADC (Analog-to-Digital Converter) Command
+message ADCCommand {
+  option msgid = 112;
+  uint8 channel = 1;
+  uint16 sample_rate = 2;
+  bool enable = 3;
+}
+
+// DAC (Digital-to-Analog Converter) Command  
+message DACCommand {
+  option msgid = 113;
+  uint8 channel = 1;
+  uint16 output_value = 2;
+  bool enable = 3;
+}
+
+// Motor Control Command
+message MotorCommand {
+  option msgid = 114;
+  int16 speed = 1;
+  uint8 direction = 2;
+  bool brake = 3;
+}
+
+// Sensor Read Command
+message SensorReadCommand {
+  option msgid = 115;
+  uint8 sensor_id = 1;
+  uint16 interval_ms = 2;
+}
+
+// ============================================================================
+// Envelope Message - Wraps all command types for unified handling
+// ============================================================================
+
+// CommandEnvelope is a container message that can hold any of the above commands.
+// The is_envelope option enables special SDK helper methods for wrapping/unwrapping.
+message CommandEnvelope {
+  option msgid = 200;
+  option is_envelope = true;
+  
+  // Envelope-level fields (metadata about the command)
+  uint32 sequence_number = 1;
+  uint8 priority = 2;
+  bool run_immediately = 3;
+  
+  // Union of all command types - exactly one will be populated
+  // The auto-discriminator uses the message ID of the wrapped command
+  oneof command {
+    ADCCommand adc = 1;
+    DACCommand dac = 2;
+    MotorCommand motor = 3;
+    SensorReadCommand sensor = 4;
+  }
+}
+
+// ============================================================================
+// Response Messages
+// ============================================================================
+
+// Generic response status
+enum ResponseStatus {
+  SUCCESS = 0;
+  ERROR = 1;
+  BUSY = 2;
+  INVALID = 3;
+}
+
+// ADC Response
+message ADCResponse {
+  option msgid = 212;
+  uint8 channel = 1;
+  uint16 value = 2;
+  ResponseStatus status = 3;
+}
+
+// DAC Response
+message DACResponse {
+  option msgid = 213;
+  uint8 channel = 1;
+  ResponseStatus status = 2;
+}
+
+// Motor Response
+message MotorResponse {
+  option msgid = 214;
+  int16 actual_speed = 1;
+  ResponseStatus status = 2;
+}
+
+// Sensor Response  
+message SensorResponse {
+  option msgid = 215;
+  uint8 sensor_id = 1;
+  float value = 2;
+  ResponseStatus status = 3;
+}
+
+// ============================================================================
+// Response Envelope
+// ============================================================================
+
+// ResponseEnvelope wraps all response types
+message ResponseEnvelope {
+  option msgid = 250;
+  option is_envelope = true;
+  
+  // Envelope-level fields
+  uint32 sequence_number = 1;
+  uint32 timestamp_ms = 2;
+  
+  // Union of all response types
+  oneof response {
+    ADCResponse adc = 1;
+    DACResponse dac = 2;
+    MotorResponse motor = 3;
+    SensorResponse sensor = 4;
+  }
+}
+
+// ============================================================================
+// Field-Order Discriminator Envelope Test
+// These inner types intentionally have NO msgid, so the auto-discriminator
+// falls back to field_order - this exercises the SDK interface enum naming fix.
+// ============================================================================
+
+// Payload type without msgid - forces field_order discriminator
+message RawSamplePayload {
+  uint8 channel = 1;
+  float value = 2;
+  uint8 flags = 3;
+}
+
+// Config payload without msgid - forces field_order discriminator
+message RawConfigPayload {
+  uint8 setting_id = 1;
+  uint16 setting_value = 2;
+}
+
+// Envelope wrapping payloads that have no msgid.
+// Since neither RawSamplePayload nor RawConfigPayload has a msgid,
+// the auto-discriminator uses field_order, generating a discriminator enum.
+// This is the scenario that exposed the enum naming bug in SdkInterface.cs.
+message RawDataEnvelope {
+  option msgid = 300;
+  option is_envelope = true;
+
+  uint8 priority = 1;
+  uint32 timestamp_us = 2;
+
+  oneof payload {
+    RawSamplePayload sample = 1;
+    RawConfigPayload config = 2;
+  }
+}

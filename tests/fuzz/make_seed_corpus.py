@@ -24,6 +24,10 @@ def main() -> int:
                 "corrupt": corpus.corrupted_stream(profile, count=12, seed=seed)[0],
                 "noisy": corpus.noisy_stream(profile, count=12, seed=seed),
             }
+            if profile in corpus.SYSTEM_PROFILES:
+                # System frames (payload type 9) between application frames, with stray
+                # system headers, so the fuzzer reaches the system-frame demultiplexer.
+                streams["system"] = corpus.system_stream(profile, count=12, seed=seed)[0]
             for kind, data in streams.items():
                 (out / f"{profile}_{kind}_{seed}.bin").write_bytes(data[:4096])
                 n += 1

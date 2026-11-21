@@ -9,6 +9,7 @@ ES6 module syntax (import/export).
 
 from struct_frame import version, NamingStyleC, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -17,6 +18,7 @@ from struct_frame.ts_js_base import (
     BaseEnumGen,
     to_camel_case,
     needs_default_bytes,
+    field_props_literal,
     ts_default_bytes_literal,
     # New class-based generation utilities
     TYPE_SIZES,
@@ -248,6 +250,8 @@ class MessageTsClassGen():
         # back the schema default for any field it didn't explicitly set.
         if needs_default_bytes(msg):
             result += f'  static readonly _defaultBytes: Uint8Array = {ts_default_bytes_literal(msg.default_bytes)};\n'
+        # Accessor properties of each schema field (used by isDefault(field)).
+        result += f'  static readonly _fieldProps: Record<string, readonly string[]> = {field_props_literal(msg)};\n'
 
         result += '\n'
         
@@ -651,11 +655,10 @@ class MessageTsClassGen():
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
                 elif field_type in ("string", "bytes"):
-                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      const str = this.{name}Data[i] || \'\';\n'
-                    result += f'      buffer.write(str.slice(0, {element_size}), offset);\n'
-                    result += f'      offset += {element_size};\n'
-                    result += f'    }}\n'
+                    # String array: each element is stored at its full size; copy the raw
+                    # bytes (slicing the text by characters could overrun multi-byte UTF-8).
+                    result += f'    this._buffer.copy(buffer, offset, {msg_offset + count_bytes}, {msg_offset + count_bytes} + {name}Count * {element_size});\n'
+                    result += f'    offset += {name}Count * {element_size};\n'
                 else:
                     # Map types to Buffer API write methods
                     buffer_write_methods = {
@@ -1227,6 +1230,17 @@ class FileTsGen():
         if package.package_id is not None:
             yield f'/* Package ID for extended message IDs */\n'
             yield f'export const PACKAGE_ID = {package.package_id};\n\n'
+
+        consts = _lit.package_consts(package)
+        if consts:
+            yield '/* Constants */\n'
+            for const in consts:
+                lines = _lit.doc_lines(const.comments)
+                if lines:
+                    yield '/**\n' + ''.join(f' * {line}'.rstrip() + '\n' for line in lines) + ' */\n'
+                yield (f'export const {_lit.const_name(const)}: {_lit.ts_type(const.const_type)} = '
+                       f'{_lit.js_scalar(const.const_type, const.value)};\n')
+            yield '\n'
 
         # include additional header files here if available in the future
 

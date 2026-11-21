@@ -1,0 +1,802 @@
+{
+ "ir": {
+  "documentation_hash": "45ebe894d37e344f92637594767cbe82dc40621928e45d5b0c916dd80974d873",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {},
+    "file_docs": {
+     "trimmed_union_codegen.sf": [
+      "// Code-generation regression fixture for trimmed oneofs: variants that are",
+      "// fixed strings, that declare a zero-valued default, or that contain a",
+      "// nested oneof (named C++ union) must still compile and decode."
+     ]
+    },
+    "messages": {
+     "Holder": {
+      "_class": "Message",
+      "base_size": 6,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "x": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "x",
+        "number": 1,
+        "package": "trimmed_union_codegen",
+        "size": 1,
+        "size_option": null,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       187,
+       112
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "Holder",
+      "oneofs": {
+       "u": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 4,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "z",
+         "s"
+        ],
+        "fields": {
+         "s": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "uint32",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": true,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "s",
+          "number": 2,
+          "package": "trimmed_union_codegen",
+          "size": 4,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": null,
+          "type_ref": null
+         },
+         "z": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ZeroDef",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "z",
+          "number": 1,
+          "package": "trimmed_union_codegen",
+          "size": 4,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "trimmed_union_codegen",
+          "type_ref": {
+           "message": null,
+           "name": "ZeroDef",
+           "package": "trimmed_union_codegen",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "u",
+        "package": "trimmed_union_codegen",
+        "size": 4,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "z",
+          4
+         ],
+         [
+          2,
+          "s",
+          4
+         ]
+        ]
+       }
+      },
+      "package": "trimmed_union_codegen",
+      "size": 6,
+      "source_file": "trimmed_union_codegen.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "Inner": {
+      "_class": "Message",
+      "base_size": 1,
+      "comments": [],
+      "default_bytes": {
+       "hex": "07"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "b": {
+        "_class": "Field",
+        "comments": [],
+        "default": 7,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "b",
+        "number": 1,
+        "package": "trimmed_union_codegen",
+        "size": 1,
+        "size_option": null,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       2,
+       2
+      ],
+      "magic_bytes_override": null,
+      "min_size": 1,
+      "name": "Inner",
+      "oneofs": {},
+      "package": "trimmed_union_codegen",
+      "size": 1,
+      "source_file": "trimmed_union_codegen.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "Mid": {
+      "_class": "Message",
+      "base_size": 2,
+      "comments": [],
+      "default_bytes": {
+       "hex": "0000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {},
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       90,
+       253
+      ],
+      "magic_bytes_override": null,
+      "min_size": 2,
+      "name": "Mid",
+      "oneofs": {
+       "m": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 1,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "i",
+         "k"
+        ],
+        "fields": {
+         "i": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "Inner",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "i",
+          "number": 1,
+          "package": "trimmed_union_codegen",
+          "size": 1,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "trimmed_union_codegen",
+          "type_ref": {
+           "message": null,
+           "name": "Inner",
+           "package": "trimmed_union_codegen",
+           "ref": "message"
+          }
+         },
+         "k": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "uint8",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": true,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "k",
+          "number": 2,
+          "package": "trimmed_union_codegen",
+          "size": 1,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": null,
+          "type_ref": null
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "m",
+        "package": "trimmed_union_codegen",
+        "size": 1,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          1,
+          {
+           "hex": "07"
+          }
+         ],
+         [
+          1,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "i",
+          1
+         ],
+         [
+          2,
+          "k",
+          1
+         ]
+        ]
+       }
+      },
+      "package": "trimmed_union_codegen",
+      "size": 2,
+      "source_file": "trimmed_union_codegen.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "Outer": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {},
+      "id": 3,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       30,
+       57
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "Outer",
+      "oneofs": {
+       "o": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 2,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "mid",
+         "q"
+        ],
+        "fields": {
+         "mid": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "Mid",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "mid",
+          "number": 1,
+          "package": "trimmed_union_codegen",
+          "size": 2,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "trimmed_union_codegen",
+          "type_ref": {
+           "message": null,
+           "name": "Mid",
+           "package": "trimmed_union_codegen",
+           "ref": "message"
+          }
+         },
+         "q": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "uint8",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": true,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "q",
+          "number": 2,
+          "package": "trimmed_union_codegen",
+          "size": 1,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": null,
+          "type_ref": null
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "o",
+        "package": "trimmed_union_codegen",
+        "size": 2,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          2,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          1,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "mid",
+          2
+         ],
+         [
+          2,
+          "q",
+          1
+         ]
+        ]
+       }
+      },
+      "package": "trimmed_union_codegen",
+      "size": 3,
+      "source_file": "trimmed_union_codegen.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "Tagged": {
+      "_class": "Message",
+      "base_size": 18,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "x": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "x",
+        "number": 1,
+        "package": "trimmed_union_codegen",
+        "size": 1,
+        "size_option": null,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       24,
+       42
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "Tagged",
+      "oneofs": {
+       "payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 16,
+        "comments": [],
+        "discriminator_mode": "field_order",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "name",
+         "code"
+        ],
+        "fields": {
+         "code": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "uint32",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": true,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "code",
+          "number": 2,
+          "package": "trimmed_union_codegen",
+          "size": 4,
+          "size_option": null,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": null,
+          "type_ref": null
+         },
+         "name": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "string",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": true,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "name",
+          "number": 1,
+          "package": "trimmed_union_codegen",
+          "size": 16,
+          "size_option": 16,
+          "source_file": "trimmed_union_codegen.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": null,
+          "type_ref": null
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "payload",
+        "package": "trimmed_union_codegen",
+        "size": 16,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          16,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "name",
+          16
+         ],
+         [
+          2,
+          "code",
+          4
+         ]
+        ]
+       }
+      },
+      "package": "trimmed_union_codegen",
+      "size": 18,
+      "source_file": "trimmed_union_codegen.sf",
+      "trailing_comments": [],
+      "variable": true
+     },
+     "ZeroDef": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [],
+      "default_bytes": {
+       "hex": "00000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "a": {
+        "_class": "Field",
+        "comments": [],
+        "default": 0,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "a",
+        "number": 1,
+        "package": "trimmed_union_codegen",
+        "size": 4,
+        "size_option": null,
+        "source_file": "trimmed_union_codegen.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       6,
+       6
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "ZeroDef",
+      "oneofs": {},
+      "package": "trimmed_union_codegen",
+      "size": 4,
+      "source_file": "trimmed_union_codegen.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "trimmed_union_codegen",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "c3fa3067122ec1b1f950fe2ba245ccaf3a5f181e0c54cdcb9fc56e8cd05862c4"
+ },
+ "outputs": {
+  "c/structframe_all.h": "32f9c4d490f4097e19f41d0aab7290686796fdb706a3042c38d02580fd6dc8b2",
+  "c/test_roundtrip_trimmed_union_codegen.c": "6867284be764a25bfc81a151e037394da640aec4d13027575ca8de9a37d1456a",
+  "c/trimmed_union_codegen.structframe.h": "9e68a7f303ee13b2dd4c9dde9d3a9e7ba55e46ebdebd014de1e29fe39e9aebc7",
+  "c/trimmed_union_codegen.tests.h": "0024d0356c08932954b8107e4a8f823d33834fe94e6629f551c46ab109a6fa0a",
+  "cpp/structframe_all.hpp": "a823f88642be470595e98d5a44f5fd45a91dab017a1dbbbaf908b0422b16adca",
+  "cpp/test_roundtrip_trimmed_union_codegen.cpp": "c2f9315b4ba275157069721c13882e27ea05f3c4f10d9caf80654853f874908d",
+  "cpp/trimmed_union_codegen.structframe.hpp": "27973c0b250e63f3168a99e610474fcd86c9ddda1541dc99991336d09cc0e0b2",
+  "cpp/trimmed_union_codegen.tests.hpp": "921f4c7887625d5579139f49a1e82f1a8423aa596b36111b75f5b96d141166be",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "csharp/TrimmedUnionCodegen/Constants.cs": "d32aee91155b738805e5b435c58ae82267e1ce86b11afff29c1f5fc39d3a96d9",
+  "csharp/TrimmedUnionCodegen/Enums/HolderUField.cs": "0cce11b04b81dc7642cc0f2157770bf87dedcfe120760355ef6ed3d5edf2b30c",
+  "csharp/TrimmedUnionCodegen/Enums/MidMField.cs": "2b362570d5064ae4acc94def25fba0a03aba60cbc3453e1110fbe9691a7936cf",
+  "csharp/TrimmedUnionCodegen/Enums/OuterOField.cs": "6b90efa3130452f1f03073c4e74871e8e4fdade4a3a0a2805310093ea351081b",
+  "csharp/TrimmedUnionCodegen/Enums/TaggedPayloadField.cs": "22d4ea8c7871b1bffd6f73f9b384affe80cd9166b5f9ed1d4b394114beee8b01",
+  "csharp/TrimmedUnionCodegen/MessageDefinitions.cs": "44b294f4549fbe60562b16ddbe61f47ec43a57050caea13f9595503413df5e48",
+  "csharp/TrimmedUnionCodegen/Messages/Holder.cs": "a90c35c38908851e7ca82decb9c6269bfcf2fe77d79502b2752624a51b500814",
+  "csharp/TrimmedUnionCodegen/Messages/Inner.cs": "13e61bee305583bd83375e3c5acfce7b2214a9038bcfe1bb027e6a017d123c03",
+  "csharp/TrimmedUnionCodegen/Messages/Mid.cs": "2e562a665796aff53424662e55f7b82b2deb3e7bc22eae49542d019aa514e438",
+  "csharp/TrimmedUnionCodegen/Messages/Outer.cs": "56f7581bffda7c8ab2dfd80773691e6ea13ec13ad907987bdbd344c858c2ea20",
+  "csharp/TrimmedUnionCodegen/Messages/Tagged.cs": "8cc2065712835c629e2af831db6a4f2c2cd39292b77bab418ac7357dca1ae72f",
+  "csharp/TrimmedUnionCodegen/Messages/ZeroDef.cs": "ee1d62f45762d47e5954566d3906743aeb89429867c4f6e3f1519ee066199426",
+  "csharp/TrimmedUnionCodegen/SdkInterface.cs": "8d59a6ebe1701fa824be1de033de97352238d981225efb5b369cc984abaca319",
+  "csharp/TrimmedUnionCodegen/test_roundtrip_trimmed_union_codegen.cs": "32258b71377cd319e180617527e0b346727d7ff1b66f1a0c1f754aeaad7450ef",
+  "gql/schema.graphql": "8c40e76233fe92ff535399b7802514d72b7af5ca6d02444085d4eb5df779d26f",
+  "gql/trimmed_union_codegen.graphql": "ed17e08a6266db0e17ddf115ff9a82f7d913b4fde59d5c8619bdd234a03125f9",
+  "js/test_roundtrip_trimmed_union_codegen.js": "6a0903d0af642478a1b1856691f44d0804ff96518783170b6eebb402d88f2519",
+  "js/trimmed-union-codegen.structframe.js": "ab184416bf8ad9dc47878e7659a48c9e4e031652062c2ef1c5d181f5f39abc03",
+  "py/structframe/trimmed_union_codegen.py": "08dfd9dba9c82c25a21b2436eef75400155b5829c076ee43f9049e95b08fb729",
+  "py/structframe/trimmed_union_codegen_tests.py": "80e4b1c8670113db8a3b6c7c7e788bb5954ed7809bb4593938685b4417237e81",
+  "py/test_roundtrip_trimmed_union_codegen.py": "7ce35028534f42ac14fd989d70b65cabf386e2109616fa4777cc3f077ebf4444",
+  "rust/Cargo.toml": "1095e786e51f812c1eff8aae315d27813130484c9ca2fc664738bb56ad41991d",
+  "rust/test_roundtrip_trimmed_union_codegen.rs": "e7a88bb74ae7aff038d5b1b71c44a4fc59320ea2023af3087e68c3859ef86a32",
+  "rust/trimmed_union_codegen.structframe.rs": "291342dcefb3c2c072bca77ba5081029e15b7d51887c32cc9ad6d68dfaa2a32f",
+  "sf_compile.json": "2ab12c4387c4ad028e6f1fa175bb7bb1a89fcc6a62c229fe4053e90d49da80bb",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_trimmed_union_codegen.ts": "c4e5b88102b52100165530c11d0ca0062cca7b5f7ea12eb4bb0feb6367f89c9a",
+  "ts/trimmed-union-codegen.structframe.ts": "90101204e896dc980e0788aaeb83c2014e0fae831101e4ff980a28a7dbfc821a"
+ },
+ "outputs_no_packed": {
+  "c/structframe_all.h": "32f9c4d490f4097e19f41d0aab7290686796fdb706a3042c38d02580fd6dc8b2",
+  "c/test_roundtrip_trimmed_union_codegen.c": "6867284be764a25bfc81a151e037394da640aec4d13027575ca8de9a37d1456a",
+  "c/trimmed_union_codegen.structframe.h": "583c9d9deb09ec11c31044b4305f4c0f099b04aa5f5d332226895200bb0d9bfd",
+  "c/trimmed_union_codegen.tests.h": "0024d0356c08932954b8107e4a8f823d33834fe94e6629f551c46ab109a6fa0a",
+  "cpp/structframe_all.hpp": "a823f88642be470595e98d5a44f5fd45a91dab017a1dbbbaf908b0422b16adca",
+  "cpp/test_roundtrip_trimmed_union_codegen.cpp": "c2f9315b4ba275157069721c13882e27ea05f3c4f10d9caf80654853f874908d",
+  "cpp/trimmed_union_codegen.structframe.hpp": "fac58fff2a0b2d953768290a1af26353faa799327e87c8631e6e70d1f8efeb36",
+  "cpp/trimmed_union_codegen.tests.hpp": "921f4c7887625d5579139f49a1e82f1a8423aa596b36111b75f5b96d141166be",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "csharp/TrimmedUnionCodegen/Constants.cs": "1bbda3e450a84a97dc4de812567c806af3490dd5291ddba6a6f7472d72376846",
+  "csharp/TrimmedUnionCodegen/Enums/HolderUField.cs": "0cce11b04b81dc7642cc0f2157770bf87dedcfe120760355ef6ed3d5edf2b30c",
+  "csharp/TrimmedUnionCodegen/Enums/MidMField.cs": "2b362570d5064ae4acc94def25fba0a03aba60cbc3453e1110fbe9691a7936cf",
+  "csharp/TrimmedUnionCodegen/Enums/OuterOField.cs": "6b90efa3130452f1f03073c4e74871e8e4fdade4a3a0a2805310093ea351081b",
+  "csharp/TrimmedUnionCodegen/Enums/TaggedPayloadField.cs": "22d4ea8c7871b1bffd6f73f9b384affe80cd9166b5f9ed1d4b394114beee8b01",
+  "csharp/TrimmedUnionCodegen/MessageDefinitions.cs": "b54ed22b54a0af18ab8200913d43679e915aa7762d414888d11ff9d41de82331",
+  "csharp/TrimmedUnionCodegen/Messages/Holder.cs": "a90c35c38908851e7ca82decb9c6269bfcf2fe77d79502b2752624a51b500814",
+  "csharp/TrimmedUnionCodegen/Messages/Inner.cs": "d9ffe7e895f9609d5edc2f1421c583800ac14a7fa634657e0611ee774eaa49ee",
+  "csharp/TrimmedUnionCodegen/Messages/Mid.cs": "4785a553221c10507e3ca97f507ad69b3244c173fc6336a26c5e14f2824b4ba0",
+  "csharp/TrimmedUnionCodegen/Messages/Outer.cs": "a8f899fcf4dc83f74c2d557bf913bff4734bd52c1831f5fa46d4fe2a9ec2b7d9",
+  "csharp/TrimmedUnionCodegen/Messages/Tagged.cs": "8cc2065712835c629e2af831db6a4f2c2cd39292b77bab418ac7357dca1ae72f",
+  "csharp/TrimmedUnionCodegen/Messages/ZeroDef.cs": "fa2de2af99e317a692f249ccda74dcc4fa5f8b8302a29cd8517e26ed824d40a1",
+  "csharp/TrimmedUnionCodegen/SdkInterface.cs": "8d59a6ebe1701fa824be1de033de97352238d981225efb5b369cc984abaca319",
+  "csharp/TrimmedUnionCodegen/test_roundtrip_trimmed_union_codegen.cs": "32258b71377cd319e180617527e0b346727d7ff1b66f1a0c1f754aeaad7450ef",
+  "gql/schema.graphql": "8c40e76233fe92ff535399b7802514d72b7af5ca6d02444085d4eb5df779d26f",
+  "gql/trimmed_union_codegen.graphql": "ed17e08a6266db0e17ddf115ff9a82f7d913b4fde59d5c8619bdd234a03125f9",
+  "js/test_roundtrip_trimmed_union_codegen.js": "6a0903d0af642478a1b1856691f44d0804ff96518783170b6eebb402d88f2519",
+  "js/trimmed-union-codegen.structframe.js": "83ceed27a2fddab4ab66fd0778d3d788f76cefc07e686d02fc824db578c1be70",
+  "py/structframe/trimmed_union_codegen.py": "62e6a415fed78af849ef5ef6b718cbac329b71b93ca99f15dfe1f6aa51d2f769",
+  "py/structframe/trimmed_union_codegen_tests.py": "80e4b1c8670113db8a3b6c7c7e788bb5954ed7809bb4593938685b4417237e81",
+  "py/test_roundtrip_trimmed_union_codegen.py": "7ce35028534f42ac14fd989d70b65cabf386e2109616fa4777cc3f077ebf4444",
+  "rust/Cargo.toml": "1095e786e51f812c1eff8aae315d27813130484c9ca2fc664738bb56ad41991d",
+  "rust/test_roundtrip_trimmed_union_codegen.rs": "e7a88bb74ae7aff038d5b1b71c44a4fc59320ea2023af3087e68c3859ef86a32",
+  "rust/trimmed_union_codegen.structframe.rs": "292f0d01b36a982c08325dfeaa9ad781ac7e2bcc5630a86cfe39f6c76a52ac66",
+  "sf_compile.json": "662235ea2d602f6d8a4da38e4a1867946736566bc6eed3c9c31bfbcbde0e1b4b",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_trimmed_union_codegen.ts": "c4e5b88102b52100165530c11d0ca0062cca7b5f7ea12eb4bb0feb6367f89c9a",
+  "ts/trimmed-union-codegen.structframe.ts": "184fa4fe1e58cf96ad328c78c8141af447882d02b37a18979ffa7e9b4422eb4c"
+ },
+ "schema": "tests/proto/trimmed_union_codegen.sf"
+}

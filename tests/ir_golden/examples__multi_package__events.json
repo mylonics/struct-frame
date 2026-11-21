@@ -1,0 +1,384 @@
+{
+ "ir": {
+  "documentation_hash": "06f0bb364b46848530206cbe398eb81ad6b9b0dc046df1e33d458f92ae29c509",
+  "package_imports": {
+   "events": [
+    "common"
+   ]
+  },
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "Priority": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "CRITICAL": [
+        3,
+        []
+       ],
+       "HIGH": [
+        2,
+        []
+       ],
+       "LOW": [
+        0,
+        []
+       ],
+       "MEDIUM": [
+        1,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "CRITICAL": [],
+       "HIGH": [],
+       "LOW": [],
+       "MEDIUM": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "Priority",
+      "package": "common",
+      "size": 1,
+      "source_file": "common_defs.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "common_defs.sf": [
+      "// Common definitions that can be reused across packages."
+     ]
+    },
+    "messages": {
+     "Timestamp": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "nanoseconds": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "nanoseconds",
+        "number": 2,
+        "package": "common",
+        "size": 4,
+        "size_option": null,
+        "source_file": "common_defs.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "seconds": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint64",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "seconds",
+        "number": 1,
+        "package": "common",
+        "size": 8,
+        "size_option": null,
+        "source_file": "common_defs.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       19,
+       31
+      ],
+      "magic_bytes_override": null,
+      "min_size": 12,
+      "name": "Timestamp",
+      "oneofs": {},
+      "package": "common",
+      "size": 12,
+      "source_file": "common_defs.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "common",
+    "package_id": 1,
+    "package_id_explicit": true,
+    "services": {}
+   },
+   {
+    "consts": {},
+    "enums": {},
+    "file_docs": {
+     "events.sf": [
+      "// Event messages that use a type from another package."
+     ]
+    },
+    "messages": {
+     "SystemEvent": {
+      "_class": "Message",
+      "base_size": 162,
+      "comments": [],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "description": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 128,
+        "name": "description",
+        "number": 3,
+        "package": "events",
+        "size": 129,
+        "size_option": null,
+        "source_file": "events.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "event_name": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "event_name",
+        "number": 1,
+        "package": "events",
+        "size": 32,
+        "size_option": 32,
+        "source_file": "events.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "priority": {
+        "_class": "Field",
+        "comments": [
+         "// declared in package \"common\""
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Priority",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "priority",
+        "number": 2,
+        "package": "events",
+        "size": 1,
+        "size_option": null,
+        "source_file": "events.sf",
+        "trailing_comments": [
+         "// declared in package \"common\""
+        ],
+        "type_message": null,
+        "type_package": "common",
+        "type_ref": {
+         "message": null,
+         "name": "Priority",
+         "package": "common",
+         "ref": "enum"
+        }
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       43,
+       84
+      ],
+      "magic_bytes_override": null,
+      "min_size": 162,
+      "name": "SystemEvent",
+      "oneofs": {},
+      "package": "events",
+      "size": 162,
+      "source_file": "events.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "events",
+    "package_id": 3,
+    "package_id_explicit": true,
+    "services": {}
+   }
+  ],
+  "schema_hash": "32a164325640c049a16dc9dedcc00c623117b276a49c75fe7a99a6e2e6b4f770"
+ },
+ "outputs": {
+  "c/common.structframe.h": "27380c5031fb150744c4cd32ea7d30b50a558f05f24d97a716fa73069c7dad0d",
+  "c/common.tests.h": "6f34fed9f8c451b0a0777873d1f6fe9bd4de74f7ba9096acdd1a4b117b166d61",
+  "c/events.structframe.h": "432086f7cd8063ec59276a1d7862b51e80870efcf32438367eb6a5651b20b131",
+  "c/events.tests.h": "66cf684d4a7d267e976809cb63c4f83086c1fc410f2c27543bfc37f059ac383e",
+  "c/structframe_all.h": "f1aa5cbe38f0eba8098105cf6d21fa356e2ff71954595e7763e50b8f4d7c6904",
+  "c/test_roundtrip_common.c": "5dc9899116c7306b6a64ef2d7f782250917b6fb2909641dc2eda705c56814858",
+  "c/test_roundtrip_events.c": "2b00a6c3e07defbf3c505a9a44e975b5cb4d5ce2fa2b54fe3bd63b805393b60f",
+  "cpp/common.structframe.hpp": "1575a521df76d43395f952b0b5f28732597e2eacfd07d6d1115d0a179276807d",
+  "cpp/common.tests.hpp": "eec946c37bcbed190ff8f33a6e548ef761dfdf6e70999e8275c465ab71622df5",
+  "cpp/events.structframe.hpp": "89418bfc64c2952de80eb43b4daf7379af35a21e73e28129a3d97d264d786333",
+  "cpp/events.tests.hpp": "e0af1b3b386f64a53dcfaac093e4e5e5de26bcbb85452f65aec2ee84a6988010",
+  "cpp/structframe_all.hpp": "e972286c8d60ac52313cb4bc8da071ab0ea19ecc12f0782c18b5589e556b83ab",
+  "cpp/test_roundtrip_common.cpp": "6583223d4939b0bf889a6a437e198c083982cb86708fb019d26aeee062b98cfe",
+  "cpp/test_roundtrip_events.cpp": "f610dc4ce1da6f26f68d0ca20191fd712dcb527148bbb236d438ee721a551538",
+  "csharp/Common/Constants.cs": "2ae6b627c69e32c64c4271027c4499da809aebc9dfff7c207f57f7f7d718ee7e",
+  "csharp/Common/Enums/Priority.cs": "515e6468c232eb0983be2584f7bfc6145008020abe1e7815a2c5a75908f866ac",
+  "csharp/Common/MessageDefinitions.cs": "a54c0e2147e8acb853d02fc19df421100b663be31c00b50a37e8007fad77412a",
+  "csharp/Common/Messages/Timestamp.cs": "298f40ab782ee05a71343ddece75f220adcc89cd62bc9df40439b4ecee79152f",
+  "csharp/Common/PackageInfo.cs": "e280ad354e6514e38de5e114301b66cedaf8c7aeca7799fe960b67c24f2b37f1",
+  "csharp/Common/SdkInterface.cs": "8d02fa8bf1eea70cba2cf7f69650a3664037e596b21927b3c53b6fe939efa602",
+  "csharp/Common/test_roundtrip_common.cs": "90c3f9ff13765f354a2085649accc3e618b8fb8c9de9bf6c649ba2178f31c14f",
+  "csharp/Events/Constants.cs": "90f773142817f521e41367a0b289136121c06eb9f581117ee18d4ab7d59f0117",
+  "csharp/Events/MessageDefinitions.cs": "f3545bfe7586043bb65dff5771131b0e31c4d2868f2ddf7c1c2cc6973057be68",
+  "csharp/Events/Messages/SystemEvent.cs": "f81159b5eca9b7896c1b94d4097c6db53aae7bd9ba5983eafb32045631b30afa",
+  "csharp/Events/PackageInfo.cs": "248964f5ffdc763dfd515b11b2ccfe1b0c48e1662fc10026533c096cd3bbb0be",
+  "csharp/Events/SdkInterface.cs": "04599b3b613f74aca0004a990efe180c30c79d0ec578a7686bd309561cd8f926",
+  "csharp/Events/test_roundtrip_events.cs": "f5e3e5e1f26b0cbcdc072db49fa22c3a9d0424b91cc343e3f23d800af5af997f",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/common.graphql": "c6e14ad2428193efa48fca88873a0d21e9414f495e52e0a2ec4fd01584853869",
+  "gql/events.graphql": "1b3061b2f421ff2d94e94cdd74154360453fda7e1c8076d6a63543bb10a793eb",
+  "gql/schema.graphql": "cfc7b5d20e2e5fe3cc6f083e767a138a1f573247dcba058301a21cf1a74f956e",
+  "js/common.structframe.js": "646a0a8ec9fe3fc0a676cecff411f83ad3d65a2a9818662fd73fb30489c3725a",
+  "js/events.structframe.js": "1855519e7471b7d95f9c6cc365fc285c240d2d9a0d6779fc9009b45bd660b5d8",
+  "js/test_roundtrip_common.js": "a5240e36f081949e3f1cc216d7a6a89082d2d35011dade9c63c0e711c76003e8",
+  "js/test_roundtrip_events.js": "9e8f404feb4a5033e7c307782a7fa7ce9055294019f905d50f07f4a5704f518b",
+  "py/structframe/common.py": "72d3401eec8a114b7153313b0bcdb559d9496bdb877fc8bd52a3a9e1c4dfb6aa",
+  "py/structframe/common_tests.py": "a5e42ddab3c3afdc3cd93c677b76d80ae38da99b74029958d49ab7ab4c48a595",
+  "py/structframe/events.py": "1b1b8bb3512349dbcfee6ae7aff886276f462c5f21855388dde0589ce5a10843",
+  "py/structframe/events_tests.py": "1d678b20381fb8456ade2d807b17e6b79b6c3addba6d3b1166b7b1c4fb75a08c",
+  "py/test_roundtrip_common.py": "41a5f467e090fe75415e97ddc5d01bf22d770f6c055ae5635bd6e695148f06d1",
+  "py/test_roundtrip_events.py": "bdc65ca8d89aaa952fe3e1331c06434112902aba421482468c8d4ec19ed149df",
+  "rust/Cargo.toml": "36a6609275a9812e3985a79fecdec11021347a3326bbcf2219ec9cbe3685c24e",
+  "rust/common.structframe.rs": "5e365d6afdbcbe7c45ee1f1387609a7004452aa434dc6c7909cdc93864e1b7fc",
+  "rust/events.structframe.rs": "8cbffe20f8327d0f74fff1a0bf4557d87991a248ecab2b132abbf900fd603a74",
+  "rust/test_roundtrip_common.rs": "1e32a599d1e23dfa8e8baabffd4b8238d2a8b741955f2bc6b289a0290ae371bc",
+  "rust/test_roundtrip_events.rs": "3bff7468691d826586d0143ecf2937a2ebcdf1c2fbfc2e6ce263748ea57cdfda",
+  "sf_compile.json": "f5551e7967efd1ce8576b2f749568581e0ed735e53a7f217d49f0d18ed53ce96",
+  "ts/common.structframe.ts": "737de311ce2f4c6295fd7401d0ecddeefaeed772a326b6074fb782a1a7eddc2f",
+  "ts/events.structframe.ts": "b6b385921adb05341632753ea243725fae43b44091d5b8478ae482c209166845",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_common.ts": "aeaa6bebd172b468b650e9c22e38470d456ed937311ac2f54c66f98a941a26a1",
+  "ts/test_roundtrip_events.ts": "a263737b6c8a81f89fa7f664a96aa60c6925e96007aea51016c81bf0a411a6ef"
+ },
+ "outputs_no_packed": {
+  "c/common.structframe.h": "e7f68b9c0ed642c6644165d706eaafafa5b3da06f05aa963bf99cb8b7960faf0",
+  "c/common.tests.h": "6f34fed9f8c451b0a0777873d1f6fe9bd4de74f7ba9096acdd1a4b117b166d61",
+  "c/events.structframe.h": "d4738bd76c566b759160f853ed917a19f20166a9f3a566f3810c9f65d540b1b2",
+  "c/events.tests.h": "66cf684d4a7d267e976809cb63c4f83086c1fc410f2c27543bfc37f059ac383e",
+  "c/structframe_all.h": "f1aa5cbe38f0eba8098105cf6d21fa356e2ff71954595e7763e50b8f4d7c6904",
+  "c/test_roundtrip_common.c": "5dc9899116c7306b6a64ef2d7f782250917b6fb2909641dc2eda705c56814858",
+  "c/test_roundtrip_events.c": "2b00a6c3e07defbf3c505a9a44e975b5cb4d5ce2fa2b54fe3bd63b805393b60f",
+  "cpp/common.structframe.hpp": "191abdd8e93a7e208354354c42fde6aa89692076d0f4b804d5375018bfd75925",
+  "cpp/common.tests.hpp": "eec946c37bcbed190ff8f33a6e548ef761dfdf6e70999e8275c465ab71622df5",
+  "cpp/events.structframe.hpp": "2eebc2208f9107bedba2da5252d613e1c5f9743e78ec17a3974131946f42d539",
+  "cpp/events.tests.hpp": "e0af1b3b386f64a53dcfaac093e4e5e5de26bcbb85452f65aec2ee84a6988010",
+  "cpp/structframe_all.hpp": "e972286c8d60ac52313cb4bc8da071ab0ea19ecc12f0782c18b5589e556b83ab",
+  "cpp/test_roundtrip_common.cpp": "6583223d4939b0bf889a6a437e198c083982cb86708fb019d26aeee062b98cfe",
+  "cpp/test_roundtrip_events.cpp": "f610dc4ce1da6f26f68d0ca20191fd712dcb527148bbb236d438ee721a551538",
+  "csharp/Common/Constants.cs": "7df6855225b230cc66c6bbaf9266d66f6c6eec4b255a464066166627e76129fc",
+  "csharp/Common/Enums/Priority.cs": "515e6468c232eb0983be2584f7bfc6145008020abe1e7815a2c5a75908f866ac",
+  "csharp/Common/MessageDefinitions.cs": "a54c0e2147e8acb853d02fc19df421100b663be31c00b50a37e8007fad77412a",
+  "csharp/Common/Messages/Timestamp.cs": "495e65ef3aea6a19fa264bfbcda069d42521044ca9afc00c33f0154af1487597",
+  "csharp/Common/PackageInfo.cs": "e280ad354e6514e38de5e114301b66cedaf8c7aeca7799fe960b67c24f2b37f1",
+  "csharp/Common/SdkInterface.cs": "8d02fa8bf1eea70cba2cf7f69650a3664037e596b21927b3c53b6fe939efa602",
+  "csharp/Common/test_roundtrip_common.cs": "90c3f9ff13765f354a2085649accc3e618b8fb8c9de9bf6c649ba2178f31c14f",
+  "csharp/Events/Constants.cs": "a17e5c22bdad778b01238d6519888cb864cfaf232b4bb00784180ed7063c7394",
+  "csharp/Events/MessageDefinitions.cs": "2bd31d6b9a4d48c574de2dee81243fed2227f152e865db7dfcac0f8848421333",
+  "csharp/Events/Messages/SystemEvent.cs": "ce446be224e4e6c32cd95d29862146efd550dd80597aa6da393b366d23426a4c",
+  "csharp/Events/PackageInfo.cs": "248964f5ffdc763dfd515b11b2ccfe1b0c48e1662fc10026533c096cd3bbb0be",
+  "csharp/Events/SdkInterface.cs": "04599b3b613f74aca0004a990efe180c30c79d0ec578a7686bd309561cd8f926",
+  "csharp/Events/test_roundtrip_events.cs": "f5e3e5e1f26b0cbcdc072db49fa22c3a9d0424b91cc343e3f23d800af5af997f",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/common.graphql": "c6e14ad2428193efa48fca88873a0d21e9414f495e52e0a2ec4fd01584853869",
+  "gql/events.graphql": "1b3061b2f421ff2d94e94cdd74154360453fda7e1c8076d6a63543bb10a793eb",
+  "gql/schema.graphql": "cfc7b5d20e2e5fe3cc6f083e767a138a1f573247dcba058301a21cf1a74f956e",
+  "js/common.structframe.js": "e485eeb006b760d6679b104dbfc721619792ef3e2ed4fc1d41b1c0f766eb5f70",
+  "js/events.structframe.js": "146d1bbfbcffe0b5de80c0b9ba777270acb69c2f43bbae4bb3d682344de9c5f8",
+  "js/test_roundtrip_common.js": "a5240e36f081949e3f1cc216d7a6a89082d2d35011dade9c63c0e711c76003e8",
+  "js/test_roundtrip_events.js": "9e8f404feb4a5033e7c307782a7fa7ce9055294019f905d50f07f4a5704f518b",
+  "py/structframe/common.py": "509541bc8d5af5966e8c5929783d7c2a38a48960dab29bee381d16cd4d2fabe1",
+  "py/structframe/common_tests.py": "a5e42ddab3c3afdc3cd93c677b76d80ae38da99b74029958d49ab7ab4c48a595",
+  "py/structframe/events.py": "913059a38f99d88d187284f332fc47b9f33ee88d2eac4d52eb9a9a4942af1a0f",
+  "py/structframe/events_tests.py": "1d678b20381fb8456ade2d807b17e6b79b6c3addba6d3b1166b7b1c4fb75a08c",
+  "py/test_roundtrip_common.py": "41a5f467e090fe75415e97ddc5d01bf22d770f6c055ae5635bd6e695148f06d1",
+  "py/test_roundtrip_events.py": "bdc65ca8d89aaa952fe3e1331c06434112902aba421482468c8d4ec19ed149df",
+  "rust/Cargo.toml": "36a6609275a9812e3985a79fecdec11021347a3326bbcf2219ec9cbe3685c24e",
+  "rust/common.structframe.rs": "e45ba3ec089e823a93898f33f69c421c3bcce3a44e680254e6ed8c08f69d6bd4",
+  "rust/events.structframe.rs": "a01157bfee3b6d6bedefc71f6c35280bcdc94b13f5a3e61fd8fbd48dce4f0429",
+  "rust/test_roundtrip_common.rs": "1e32a599d1e23dfa8e8baabffd4b8238d2a8b741955f2bc6b289a0290ae371bc",
+  "rust/test_roundtrip_events.rs": "3bff7468691d826586d0143ecf2937a2ebcdf1c2fbfc2e6ce263748ea57cdfda",
+  "sf_compile.json": "0f7e01de5d4e80f7f7097e695f9c2a75edc8abdb0a05cb120e4939f07a1be322",
+  "ts/common.structframe.ts": "237e30cbe01652705d519ffdefc71aa8040293dbdf3c3b7781f762f48b31164f",
+  "ts/events.structframe.ts": "f9bf90fa017d6f1fa05a3dcc5d704251d6f2361502e34d881d013cab76168f84",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_common.ts": "aeaa6bebd172b468b650e9c22e38470d456ed937311ac2f54c66f98a941a26a1",
+  "ts/test_roundtrip_events.ts": "a263737b6c8a81f89fa7f664a96aa60c6925e96007aea51016c81bf0a411a6ef"
+ },
+ "schema": "examples/multi_package/events.sf"
+}

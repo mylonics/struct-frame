@@ -18,7 +18,8 @@ enum class PayloadType : uint8_t {
   SYS_COMP = 5,                    /* [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] */
   SEQ = 6,                         /* [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] */
   MULTI_SYSTEM_STREAM = 7,         /* [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] */
-  EXTENDED_MULTI_SYSTEM_STREAM = 8 /* [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2] */
+  EXTENDED_MULTI_SYSTEM_STREAM = 8, /* [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2] */
+  SYSTEM = 9 /* [SEQ] [SYS_ID] [COMP_ID] [LEN16] [SYS_MSG_ID] [PACKET] [CRC1] [CRC2] (system frames) */
 };
 
 /* Maximum payload type value (for range checking) */
@@ -171,6 +172,20 @@ constexpr PayloadConfig PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = {
     true, /* has sys_id */
     true, /* has comp_id */
     true  /* has pkg_id */
+};
+
+/* System frames: struct-frame's own messages (heartbeat, ping, link tests, RPC), carried
+ * after a Basic or Tiny header with payload type 9 (start byte 0x79). */
+constexpr PayloadConfig PAYLOAD_SYSTEM_CONFIG = {
+    PayloadType::SYSTEM,
+    true,
+    2, /* has CRC, 2 bytes */
+    true,
+    2,     /* has length, 2 bytes */
+    true,  /* has seq */
+    true,  /* has sys_id */
+    true,  /* has comp_id */
+    false  /* no pkg_id */
 };
 
 }  // namespace payloads

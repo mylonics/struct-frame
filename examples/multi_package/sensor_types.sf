@@ -1,8 +1,7 @@
-// Sensor-specific type definitions. Two files can contribute to one package:
-// sensor_messages.sf below declares the same package and pkgid.
-package sensors;
+/// Sensor-specific type definitions. Two files can contribute to one package:
+/// sensor_messages.sf below declares the same package and pkgid.
 
-option pkgid = 2;
+package sensors @2;
 
 enum SensorType {
   TEMPERATURE = 0;

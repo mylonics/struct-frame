@@ -53,21 +53,25 @@ def fletcher_with_magic(data, magic1, magic2):
 FRAME_SCRIPT = '''
 import sys
 from structframe.frame_profiles import (BufferWriter, PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG,
-                            PROFILE_NETWORK_CONFIG)
-from structframe import sensor_data, actuator_control
+                            PROFILE_NETWORK_CONFIG, PROFILE_SENSOR_CONFIG)
+from structframe import sensor_data, actuator_control, sf_system, system_frames
 reading = sensor_data.SensorReading(type=1, value=2.5, timestamp=123456, sensor_id=b"s-1")
 command = actuator_control.ActuatorCommand(actuator_id=b"a-7", desired_state=1, target_value=3.0)
 status = sensor_data.SensorStatus(sensor_id=b"s-1", online=1, battery_percent=50.0, error_count=2)
 frames = {}
 w = BufferWriter(PROFILE_BULK_CONFIG, 512); w.write(reading); frames["bulk"] = w.data().hex()
 w = BufferWriter(PROFILE_NETWORK_CONFIG, 512); w.write(command, seq=9, sys_id=1, comp_id=42); frames["network"] = w.data().hex()
-print(frames["bulk"]); print(frames["network"])
+frames["system_basic"] = system_frames.encode(PROFILE_STANDARD_CONFIG,
+    sf_system.Heartbeat(uptime_ms=1234, counter=5, interval_ms=1000), seq=3, sys_id=1, comp_id=2).hex()
+frames["system_tiny"] = system_frames.encode(PROFILE_SENSOR_CONFIG, sf_system.Ping(seq=7), tail=b"xyz",
+    seq=4, sys_id=5, comp_id=6).hex()
+print(frames["bulk"]); print(frames["network"]); print(frames["system_basic"]); print(frames["system_tiny"])
 '''
 
 
 class _Fixture:
     """Frames from the real runtime plus the magic table for their messages."""
-    bulk = network = None
+    bulk = network = system_basic = system_tiny = None
     table = ''
     entries = None
 
@@ -86,8 +90,9 @@ class _Fixture:
                              env=dict(os.environ, PYTHONPATH=str(tmp / 'py')),
                              capture_output=True, text=True)
         assert run.returncode == 0, run.stdout + run.stderr
-        bulk_hex, network_hex = run.stdout.split()
+        bulk_hex, network_hex, sys_basic_hex, sys_tiny_hex = run.stdout.split()
         cls.bulk, cls.network = bytes.fromhex(bulk_hex), bytes.fromhex(network_hex)
+        cls.system_basic, cls.system_tiny = bytes.fromhex(sys_basic_hex), bytes.fromhex(sys_tiny_hex)
         cls.entries = magic_table.magic_entries(str(SCHEMA))
         cls.table = magic_table.format_table(cls.entries)
 
@@ -132,6 +137,14 @@ class MagicTableContractTest(unittest.TestCase):
         pkg, msg = frame[7], frame[8]
         m1, m2 = magic_for(pkg, msg)
         self.assertEqual(fletcher_with_magic(frame[2:-2], m1, m2), frame[-2:])
+
+    def test_system_frames_use_the_builtin_magic(self):
+        # System frames: [0x90][0x79] or [0x79], then [SEQ][SYS][COMP][LEN16][SYS_MSG_ID]...;
+        # the magic comes from sf_system.sf (Heartbeat 58,250; Ping 28,82), not from a table.
+        self.assertEqual(_Fixture.system_basic[:2], bytes([0x90, 0x79]))
+        self.assertEqual(fletcher_with_magic(_Fixture.system_basic[2:-2], 58, 250), _Fixture.system_basic[-2:])
+        self.assertEqual(_Fixture.system_tiny[:1], bytes([0x79]))
+        self.assertEqual(fletcher_with_magic(_Fixture.system_tiny[1:-2], 28, 82), _Fixture.system_tiny[-2:])
 
 
 def write_pcap(path, packet):
@@ -206,6 +219,28 @@ class StructFrameDissectorTest(unittest.TestCase):
         status = self.crc_status(self.dissect('bulk_bad', bytes(frame), _Fixture.table))
         self.assertTrue(status.startswith('Invalid'), status)
 
+    # System frames (payload type 9) need no magic table: the dissector knows sf_system.sf.
+
+    def test_basic_system_frame(self):
+        pkt = self.dissect('system_basic', _Fixture.system_basic)
+        self.assertEqual(str(find_field(pkt, 'struct_frame.payload_type')), 'System')
+        self.assertEqual(int(str(find_field(pkt, 'struct_frame.sequence')), 0), 3)
+        self.assertEqual(int(str(find_field(pkt, 'struct_frame.system_id')), 0), 1)
+        self.assertEqual(int(str(find_field(pkt, 'struct_frame.component_id')), 0), 2)
+        self.assertEqual(self.crc_status(pkt), 'Valid')
+
+    def test_tiny_system_frame_with_tail(self):
+        pkt = self.dissect('system_tiny', _Fixture.system_tiny)
+        self.assertEqual(str(find_field(pkt, 'struct_frame.header_type')), 'Tiny')
+        self.assertEqual(str(find_field(pkt, 'struct_frame.payload_type')), 'System')
+        self.assertEqual(self.crc_status(pkt), 'Valid')
+
+    def test_corrupted_system_frame_is_invalid(self):
+        frame = bytearray(_Fixture.system_basic)
+        frame[-3] ^= 0xFF
+        self.assertTrue(self.crc_status(self.dissect('system_bad', bytes(frame))).startswith('Invalid'))
+
 
 if __name__ == '__main__':
     unittest.main()
+

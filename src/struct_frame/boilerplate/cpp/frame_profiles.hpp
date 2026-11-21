@@ -25,6 +25,15 @@
 #include "frame_base.hpp"
 #include "frame_headers.hpp"
 #include "payload_types.hpp"
+#include "sf_system_info.hpp"
+
+/* System frames (payload type 9, start byte 0x79) carry struct-frame's own messages next to
+ * the application's. Define SF_DISABLE_SYSTEM_FRAMES to compile the reader support out. */
+#ifndef SF_DISABLE_SYSTEM_FRAMES
+#define SF_SYSTEM_FRAMES_ENABLED 1
+#else
+#define SF_SYSTEM_FRAMES_ENABLED 0
+#endif
 
 namespace structframe {
 
@@ -80,6 +89,12 @@ struct ProfileConfig {
       return Header.start_byte1;
     }
   }
+
+  /* System frames travel with this profile's header when it carries the payload type in a
+   * start byte (Basic and Tiny headers). SystemConfig is their profile. */
+  static constexpr bool supports_system_frames =
+      SF_SYSTEM_FRAMES_ENABLED && Header.encodes_payload_type && Header.num_start_bytes >= 1;
+  using SystemConfig = ProfileConfig<Header, payloads::PAYLOAD_SYSTEM_CONFIG>;
 };
 
 /*===========================================================================
@@ -332,10 +347,11 @@ class BufferParserWithCrc {
 
     size_t crc_start = idx;
 
-    // Skip optional fields before length
-    if constexpr (Config::has_seq) idx++;
-    if constexpr (Config::has_sys_id) idx++;
-    if constexpr (Config::has_comp_id) idx++;
+    // Optional fields before length
+    uint8_t sequence = 0, system_id = 0, component_id = 0, package_id = 0;
+    if constexpr (Config::has_seq) sequence = buffer[idx++];
+    if constexpr (Config::has_sys_id) system_id = buffer[idx++];
+    if constexpr (Config::has_comp_id) component_id = buffer[idx++];
 
     // Read length field
     size_t msg_len = 0;
@@ -351,6 +367,7 @@ class BufferParserWithCrc {
     // Read message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id)
     uint16_t msg_id = 0;
     if constexpr (Config::has_pkg_id) {
+      package_id = buffer[idx];
       msg_id = static_cast<uint16_t>(buffer[idx++]) << 8;  // pkg_id (high byte)
     }
     msg_id |= buffer[idx++];  // msg_id (low byte)
@@ -395,8 +412,12 @@ class BufferParserWithCrc {
       }
     }
 
-    return FrameMsgInfo(true, msg_id, msg_len, total_size,
-                        buffer + Config::header_size, buffer);
+    FrameMsgInfo result(true, msg_id, msg_len, total_size, buffer + Config::header_size, buffer);
+    result.sequence = sequence;
+    result.system_id = system_id;
+    result.component_id = component_id;
+    result.package_id = package_id;
+    return result;
   }
 
   template <typename Buffer, typename GetMessageInfoFn = std::nullptr_t>
@@ -512,6 +533,120 @@ using ProfileNetworkConfig =
     ProfileConfig<headers::HEADER_BASIC_CONFIG, payloads::PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG>;
 
 /*===========================================================================
+ * System frames - encode, and helpers shared by the readers
+ *===========================================================================*/
+
+namespace system_frames {
+
+/* True when data starts with the start bytes of a system frame of SysConfig. */
+template <typename SysConfig>
+inline bool is_system_start(const uint8_t* data, size_t size) {
+  if (size < 1 || data[0] != SysConfig::computed_start_byte1()) return false;
+  if constexpr (SysConfig::num_start_bytes >= 2) {
+    return size >= 2 && data[1] == SysConfig::computed_start_byte2();
+  } else {
+    return true;
+  }
+}
+
+/* Check the header of a candidate system frame: 1 when the system message id is known and
+ * the length fits it, 0 when not, -1 while the header is incomplete. */
+template <typename SysConfig>
+inline int header_check(const uint8_t* data, size_t size) {
+  if (size < SysConfig::header_size) return -1;
+  constexpr size_t off = SysConfig::num_start_bytes + 3;  // after SEQ, SYS, COMP
+  size_t length = static_cast<size_t>(data[off]) | (static_cast<size_t>(data[off + 1]) << 8);
+  MessageInfo info = message_info(data[SysConfig::header_size - 1]);
+  return (info && length >= info.min_size && length <= info.size) ? 1 : 0;
+}
+
+/* Parse a frame known to start with system start bytes. */
+template <typename SysConfig>
+inline FrameMsgInfo parse(const uint8_t* data, size_t size) {
+  FrameMsgInfo result;
+  if (header_check<SysConfig>(data, size) == 0) {
+    result.status = FrameMsgStatus::WaitingForStart;
+  } else {
+    result = BufferParserWithCrc<SysConfig>::parse(data, size, &message_info);
+  }
+  result.is_system = true;
+  return result;
+}
+
+/* Index of the next byte in buf[begin, end) that can start an application frame (sb1) or a
+ * system frame (sys_sb1, when with_system), or end when there is none. */
+inline size_t find_start(const uint8_t* buf, size_t begin, size_t end, uint8_t sb1, bool with_system,
+                         uint8_t sys_sb1) {
+  if (begin >= end) return end;
+  const void* p = std::memchr(buf + begin, static_cast<int>(sb1), end - begin);
+  size_t nxt = p ? static_cast<size_t>(static_cast<const uint8_t*>(p) - buf) : end;
+  if (with_system && sys_sb1 != sb1 && nxt > begin) {
+    const void* q = std::memchr(buf + begin, static_cast<int>(sys_sb1), nxt - begin);
+    if (q) nxt = static_cast<size_t>(static_cast<const uint8_t*>(q) - buf);
+  }
+  return nxt;
+}
+
+/**
+ * Encode a system frame for the header of Config: system message system_msg_id with its
+ * serialized fixed fields and an optional raw tail (Ping, Pong, LinkTestData, RpcRequest,
+ * RpcResponse). Returns the frame size, or 0 when the message is unknown, fixed_size is not
+ * its fixed size, the tail is too long or the buffer too small.
+ */
+template <typename Config>
+inline size_t encode(uint8_t* buffer, size_t buffer_size, uint8_t system_msg_id, const uint8_t* fixed,
+                     size_t fixed_size, const uint8_t* tail = nullptr, size_t tail_size = 0, uint8_t seq = 0,
+                     uint8_t sys_id = 0, uint8_t comp_id = 0) {
+  static_assert(Config::supports_system_frames,
+                "this profile cannot carry system frames (it needs a Basic or Tiny header)");
+  using Sys = typename Config::SystemConfig;
+  MessageInfo info = message_info(system_msg_id);
+  if (!info || fixed_size != info.min_size || tail_size > info.size - info.min_size) return 0;
+  size_t payload_size = fixed_size + tail_size;
+  size_t total = Sys::overhead + payload_size;
+  if (buffer_size < total) return 0;
+  size_t idx = 0;
+  buffer[idx++] = Sys::computed_start_byte1();
+  if constexpr (Sys::num_start_bytes >= 2) buffer[idx++] = Sys::computed_start_byte2();
+  size_t crc_start = idx;
+  buffer[idx++] = seq;
+  buffer[idx++] = sys_id;
+  buffer[idx++] = comp_id;
+  buffer[idx++] = static_cast<uint8_t>(payload_size & 0xFF);
+  buffer[idx++] = static_cast<uint8_t>((payload_size >> 8) & 0xFF);
+  buffer[idx++] = system_msg_id;
+  if (fixed_size > 0 && fixed != buffer + idx) std::memmove(buffer + idx, fixed, fixed_size);
+  idx += fixed_size;
+  if (tail_size > 0 && tail != buffer + idx) std::memmove(buffer + idx, tail, tail_size);
+  idx += tail_size;
+  FrameChecksum ck = fletcher_checksum(buffer + crc_start, idx - crc_start, info.magic1, info.magic2);
+  buffer[idx++] = ck.byte1;
+  buffer[idx++] = ck.byte2;
+  return idx;
+}
+
+/* Encode a generated sf_system message (structframe::sf_system::Ping, ...) as a system frame. */
+template <typename Config, FramedMessage T>
+inline size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg, const uint8_t* tail = nullptr,
+                     size_t tail_size = 0, uint8_t seq = 0, uint8_t sys_id = 0, uint8_t comp_id = 0) {
+  return encode<Config>(buffer, buffer_size, static_cast<uint8_t>(T::MSG_ID),
+                        reinterpret_cast<const uint8_t*>(&msg), T::MAX_SIZE, tail, tail_size, seq, sys_id,
+                        comp_id);
+}
+
+/* The tail of a valid system frame (the bytes after the message's fixed fields). */
+inline const uint8_t* tail(const FrameMsgInfo& frame, size_t& tail_size) {
+  tail_size = 0;
+  if (!frame.valid || !frame.is_system) return nullptr;
+  MessageInfo info = message_info(frame.msg_id);
+  if (!info || frame.msg_len < info.min_size) return nullptr;
+  tail_size = frame.msg_len - info.min_size;
+  return frame.msg_data + info.min_size;
+}
+
+}  // namespace system_frames
+
+/*===========================================================================
  * Buffer Reader/Writer Classes
  * These provide stateful iteration over buffers for encoding/decoding
  * multiple messages without manual offset tracking.
@@ -553,8 +688,21 @@ class BufferReader {
   /**
    * Parse the next frame in the buffer.
    * Returns FrameMsgInfo with valid=true if successful, valid=false if no more frames.
+   * System frames are returned (is_system) only after set_deliver_system_frames(true).
    */
   FrameMsgInfo next() {
+    for (;;) {
+      FrameMsgInfo result = next_frame();
+      if (result.valid && result.is_system && !deliver_system_frames_) continue;
+      return result;
+    }
+  }
+
+  /** Return system frames from next() instead of skipping them. */
+  void set_deliver_system_frames(bool deliver) { deliver_system_frames_ = deliver; }
+
+ private:
+  FrameMsgInfo next_frame() {
     if (offset_ >= size_) {
       return FrameMsgInfo();
     }
@@ -569,15 +717,9 @@ class BufferReader {
       // reporting SyncRecovery so try_next() keeps advancing.
       size_t old_offset = offset_;
       if constexpr (Config::num_start_bytes >= 1) {
-        size_t scan_start = offset_ + 1;
-        if (scan_start < size_) {
-          const void* p = std::memchr(buffer_ + scan_start,
-                                      static_cast<int>(Config::computed_start_byte1()),
-                                      size_ - scan_start);
-          offset_ = p ? static_cast<size_t>(static_cast<const uint8_t*>(p) - buffer_) : size_;
-        } else {
-          offset_ = size_;
-        }
+        offset_ = system_frames::find_start(buffer_, offset_ + 1, size_, Config::computed_start_byte1(),
+                                            Config::supports_system_frames,
+                                            Config::SystemConfig::computed_start_byte1());
       } else {
         // No start bytes (e.g. IPC profile): advance one byte and retry so a
         // single unknown msg_id doesn't discard the rest of the buffer.
@@ -591,6 +733,7 @@ class BufferReader {
     return result;
   }
 
+ public:
   /**
    * Reset the reader to the beginning of the buffer.
    */
@@ -629,6 +772,11 @@ class BufferReader {
 
  private:
   FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
+    if constexpr (Config::supports_system_frames) {
+      if (system_frames::is_system_start<typename Config::SystemConfig>(buffer, size)) {
+        return system_frames::parse<typename Config::SystemConfig>(buffer, size);
+      }
+    }
     if constexpr (Config::has_length || Config::has_crc) {
       return BufferParserWithCrc<Config>::parse(buffer, size, get_message_info_);
     } else {
@@ -640,6 +788,7 @@ class BufferReader {
   size_t size_;
   size_t offset_;
   GetMessageInfoFn get_message_info_;
+  bool deliver_system_frames_ = false;
 };
 
 /**
@@ -884,8 +1033,52 @@ class AccumulatingReader {
    *
    * When returning a message completed from a partial, msg_data points to the internal buffer.
    * When returning a message from the current buffer, msg_data points into that buffer.
+   *
+   * System frames are returned (is_system) only after set_deliver_system_frames(true);
+   * otherwise they are counted (cnt_system_frames) and skipped.
    */
   FrameMsgInfo next() {
+    for (;;) {
+      FrameMsgInfo result = next_frame();
+      if (result.valid && result.is_system) {
+        count_system_frame(result);
+        if (!deliver_system_frames_) continue;
+      }
+      return result;
+    }
+  }
+
+  /** Return system frames from next()/push_byte() instead of only counting them. */
+  void set_deliver_system_frames(bool deliver) { deliver_system_frames_ = deliver; }
+
+ private:
+  using Sys = typename Config::SystemConfig;
+  static constexpr bool kSystemFrames = Config::supports_system_frames;
+
+  static size_t find_start(const uint8_t* buf, size_t begin, size_t end) {
+    return system_frames::find_start(buf, begin, end, Config::computed_start_byte1(), kSystemFrames,
+                                     Sys::computed_start_byte1());
+  }
+
+  static bool is_system_frame(const uint8_t* data, size_t size) {
+    if constexpr (kSystemFrames) {
+      return system_frames::is_system_start<Sys>(data, size);
+    } else {
+      (void)data; (void)size;
+      return false;
+    }
+  }
+
+  void count_system_frame(const FrameMsgInfo& frame) {
+    diagnostics_.cnt_system_frames++;
+    if (last_sys_seq_valid_ && frame.sequence != static_cast<uint8_t>(last_sys_seq_ + 1)) {
+      diagnostics_.cnt_seq_gaps++;
+    }
+    last_sys_seq_ = frame.sequence;
+    last_sys_seq_valid_ = true;
+  }
+
+  FrameMsgInfo next_frame() {
     if (state_ != State::BufferMode) {
       return with_diagnostics(FrameMsgInfo());
     }
@@ -943,13 +1136,11 @@ class AccumulatingReader {
           internal_data_len_ >= BufferSize ||
           claims_oversize_frame(internal_buffer_, internal_data_len_)) {
         size_t discard = internal_data_len_;
+        if (result.is_system && result.status == FrameMsgStatus::WaitingForStart) {
+          diagnostics_.cnt_system_rejected++;
+        }
         if constexpr (Config::num_start_bytes >= 1) {
-          if (internal_data_len_ > 1) {
-            const void* p = std::memchr(internal_buffer_ + 1,
-                                        static_cast<int>(Config::computed_start_byte1()),
-                                        internal_data_len_ - 1);
-            if (p) discard = static_cast<size_t>(static_cast<const uint8_t*>(p) - internal_buffer_);
-          }
+          discard = find_start(internal_buffer_, 1, internal_data_len_);
         } else {
           // No start bytes (e.g. IPC): advance one byte and retry.
           discard = 1;
@@ -1003,18 +1194,11 @@ class AccumulatingReader {
       // Head byte is not a start byte — scan forward for the next one,
       // reporting SyncRecovery so try_next() keeps draining.
       size_t old_offset = current_offset_;
+      if (result.is_system) {
+        diagnostics_.cnt_system_rejected++;
+      }
       if constexpr (Config::num_start_bytes >= 1) {
-        size_t scan_start = current_offset_ + 1;
-        if (scan_start < current_size_) {
-          const void* p = std::memchr(current_buffer_ + scan_start,
-                                      static_cast<int>(Config::computed_start_byte1()),
-                                      current_size_ - scan_start);
-          current_offset_ = p
-              ? static_cast<size_t>(static_cast<const uint8_t*>(p) - current_buffer_)
-              : current_size_;
-        } else {
-          current_offset_ = current_size_;
-        }
+        current_offset_ = find_start(current_buffer_, current_offset_ + 1, current_size_);
       } else {
         // No start bytes (e.g. IPC profile): advance one byte and retry so a
         // single unknown msg_id doesn't discard the rest of the buffer.
@@ -1033,14 +1217,7 @@ class AccumulatingReader {
     if constexpr (Config::num_start_bytes >= 1) {
       if (claims_oversize_frame(current_buffer_ + current_offset_, current_size_ - current_offset_)) {
         size_t old_offset = current_offset_;
-        size_t scan_start = current_offset_ + 1;
-        current_offset_ = current_size_;
-        if (scan_start < current_size_) {
-          const void* p = std::memchr(current_buffer_ + scan_start,
-                                      static_cast<int>(Config::computed_start_byte1()),
-                                      current_size_ - scan_start);
-          if (p) current_offset_ = static_cast<size_t>(static_cast<const uint8_t*>(p) - current_buffer_);
-        }
+        current_offset_ = find_start(current_buffer_, current_offset_ + 1, current_size_);
         FrameMsgInfo r;
         r.status = FrameMsgStatus::SyncRecovery;
         r.frame_size = current_offset_ - old_offset;
@@ -1067,6 +1244,7 @@ class AccumulatingReader {
     return with_diagnostics(FrameMsgInfo());
   }
 
+ public:
   /*=========================================================================
    * Stream Mode API - Process byte-by-byte
    *=========================================================================*/
@@ -1081,6 +1259,20 @@ class AccumulatingReader {
    * @return FrameMsgInfo with valid=true if a complete message was parsed
    */
   FrameMsgInfo push_byte(uint8_t byte) {
+    FrameMsgInfo result = push_byte_inner(byte);
+    if (result.valid && result.is_system) {
+      count_system_frame(result);
+      if (!deliver_system_frames_) {
+        FrameMsgInfo hidden;
+        hidden.status = FrameMsgStatus::WaitingForStart;
+        return with_diagnostics(hidden);
+      }
+    }
+    return result;
+  }
+
+ private:
+  FrameMsgInfo push_byte_inner(uint8_t byte) {
     // Initialize state on first byte if idle
     if (state_ == State::Idle || state_ == State::BufferMode) {
       state_ = State::LookingForStart1;
@@ -1096,7 +1288,10 @@ class AccumulatingReader {
         return handle_looking_for_start2(byte);
 
       case State::CollectingHeader:
-        return handle_collecting_header(byte);
+        if constexpr (kSystemFrames) {
+          if (collecting_system_) return handle_collecting_header<Sys>(byte);
+        }
+        return handle_collecting_header<Config>(byte);
 
       case State::CollectingPayload:
         return handle_collecting_payload(byte);
@@ -1107,6 +1302,7 @@ class AccumulatingReader {
     }
   }
 
+ public:
   /*=========================================================================
    * Common API
    *=========================================================================*/
@@ -1179,6 +1375,9 @@ class AccumulatingReader {
     current_offset_ = 0;
     last_seq_ = 0;
     last_seq_valid_ = false;
+    last_sys_seq_ = 0;
+    last_sys_seq_valid_ = false;
+    collecting_system_ = false;
   }
 
  private:
@@ -1186,19 +1385,25 @@ class AccumulatingReader {
   // buffer (typically a corrupted length field). Only profiles with a length field carry such a
   // claim.
   static bool claims_oversize_frame(const uint8_t* data, size_t size) {
-    if constexpr (!Config::has_length) {
+    if (is_system_frame(data, size)) return claims_oversize_frame_as<Sys>(data, size);
+    return claims_oversize_frame_as<Config>(data, size);
+  }
+
+  template <typename C>
+  static bool claims_oversize_frame_as(const uint8_t* data, size_t size) {
+    if constexpr (!C::has_length) {
       (void)data; (void)size;
       return false;
     } else {
-      if (size < Config::header_size) return false;
-      size_t off = Config::num_start_bytes;
-      if constexpr (Config::has_seq) off++;
-      if constexpr (Config::has_sys_id) off++;
-      if constexpr (Config::has_comp_id) off++;
-      size_t payload_len = (Config::length_bytes == 1)
+      if (size < C::header_size) return false;
+      size_t off = C::num_start_bytes;
+      if constexpr (C::has_seq) off++;
+      if constexpr (C::has_sys_id) off++;
+      if constexpr (C::has_comp_id) off++;
+      size_t payload_len = (C::length_bytes == 1)
           ? data[off]
           : static_cast<size_t>(data[off] | (data[off + 1] << 8));
-      return Config::overhead + payload_len > BufferSize;
+      return C::overhead + payload_len > BufferSize;
     }
   }
 
@@ -1219,9 +1424,13 @@ class AccumulatingReader {
         state_ = State::CollectingHeader;
       }
     } else {
-      if (byte == Config::computed_start_byte1()) {
+      bool is_user = byte == Config::computed_start_byte1();
+      if (is_user || (kSystemFrames && byte == Sys::computed_start_byte1())) {
         internal_buffer_[0] = byte;
         internal_data_len_ = 1;
+        // A Basic header shares its first byte with system frames: the second byte
+        // decides. A Tiny header's only byte decides now.
+        collecting_system_ = !is_user;
 
         if constexpr (Config::num_start_bytes == 1) {
           state_ = State::CollectingHeader;
@@ -1241,8 +1450,9 @@ class AccumulatingReader {
   }
 
   FrameMsgInfo handle_looking_for_start2(uint8_t byte) {
-    if (byte == Config::computed_start_byte2()) {
+    if (byte == Config::computed_start_byte2() || (kSystemFrames && byte == Sys::computed_start_byte2())) {
       internal_buffer_[internal_data_len_++] = byte;
+      collecting_system_ = byte != Config::computed_start_byte2();
       state_ = State::CollectingHeader;
     } else if (byte == Config::computed_start_byte1()) {
       // Might be start of new frame - restart
@@ -1264,7 +1474,10 @@ class AccumulatingReader {
     return with_diagnostics(r);
   }
 
+  // C is the profile of the frame being collected: Config, or Sys for a system frame.
+  template <typename C>
   FrameMsgInfo handle_collecting_header(uint8_t byte) {
+    constexpr bool system = !std::is_same_v<C, Config>;
     if (internal_data_len_ >= BufferSize) {
       // Buffer overflow - reset
       diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_ + 1);
@@ -1279,9 +1492,23 @@ class AccumulatingReader {
     internal_buffer_[internal_data_len_++] = byte;
 
     // Check if we have enough header bytes to determine frame size
-    if (internal_data_len_ >= Config::header_size) {
+    if (internal_data_len_ >= C::header_size) {
+      if constexpr (system) {
+        if (system_frames::header_check<Sys>(internal_buffer_, internal_data_len_) != 1) {
+          // Not a system frame after all: resync without collecting a payload.
+          diagnostics_.cnt_system_rejected++;
+          diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
+          diagnostics_.cnt_sync_recoveries++;
+          state_ = State::LookingForStart1;
+          internal_data_len_ = 0;
+          collecting_system_ = false;
+          FrameMsgInfo r;
+          r.status = FrameMsgStatus::SyncRecovery;
+          return with_diagnostics(r);
+        }
+      }
       // For minimal profiles, we need the callback to determine length
-      if constexpr (!Config::has_length && !Config::has_crc) {
+      if constexpr (!C::has_length && !C::has_crc) {
         // msg_id is at header_size - 1 position
         uint8_t msg_id = internal_buffer_[Config::header_size - 1];
         if (get_message_info_) {
@@ -1333,16 +1560,16 @@ class AccumulatingReader {
       }
     } else {
       // Calculate payload length from header
-      size_t len_offset = Config::num_start_bytes;
+      size_t len_offset = C::num_start_bytes;
 
       // Skip seq, sys_id, comp_id if present
-      if constexpr (Config::has_seq) len_offset++;
-      if constexpr (Config::has_sys_id) len_offset++;
-      if constexpr (Config::has_comp_id) len_offset++;
+      if constexpr (C::has_seq) len_offset++;
+      if constexpr (C::has_sys_id) len_offset++;
+      if constexpr (C::has_comp_id) len_offset++;
 
       size_t payload_len = 0;
-      if constexpr (Config::has_length) {
-        if constexpr (Config::length_bytes == 1) {
+      if constexpr (C::has_length) {
+        if constexpr (C::length_bytes == 1) {
           payload_len = internal_buffer_[len_offset];
         } else {
           payload_len = internal_buffer_[len_offset] | (static_cast<size_t>(internal_buffer_[len_offset + 1]) << 8);
@@ -1350,7 +1577,7 @@ class AccumulatingReader {
       }
 
       // Check for length mismatch against expected message struct size
-      if constexpr (Config::has_length) {
+      if constexpr (C::has_length && !system) {
         if (get_message_info_) {
           uint16_t full_msg_id = 0;
           if constexpr (Config::has_pkg_id) {
@@ -1366,7 +1593,7 @@ class AccumulatingReader {
         }
       }
 
-      expected_frame_size_ = Config::overhead + payload_len;
+      expected_frame_size_ = C::overhead + payload_len;
 
       if (expected_frame_size_ > BufferSize) {
         // Too large - reset
@@ -1475,8 +1702,12 @@ class AccumulatingReader {
     state_ = State::LookingForStart1;
     internal_data_len_ = 0;
     expected_frame_size_ = 0;
+    bool was_system = collecting_system_;
+    collecting_system_ = false;
 
-    if (result.valid) {
+    if (result.valid && result.is_system) {
+      // sequence gaps of system frames are counted by count_system_frame()
+    } else if (result.valid) {
       // Check for sequence gap on profiles that carry a sequence number
       if constexpr (Config::has_seq) {
         uint8_t seq = internal_buffer_[Config::num_start_bytes];
@@ -1491,7 +1722,7 @@ class AccumulatingReader {
       }
     } else {
       // Invalid frame — count CRC failures and sync recoveries
-      if constexpr (Config::has_crc) {
+      if (Config::has_crc || was_system) {
         diagnostics_.cnt_crc_failures++;
         result.status = FrameMsgStatus::CrcFailure;
       }
@@ -1515,6 +1746,9 @@ class AccumulatingReader {
    * frame_start points at the first byte of the frame (start bytes included).
    */
   void record_frame_diagnostics(const uint8_t* frame_start, bool valid) {
+    if (is_system_frame(frame_start, Config::num_start_bytes)) {
+      return;  // counted by count_system_frame(); the header was already validated
+    }
     if constexpr (Config::has_length) {
       if (get_message_info_) {
         size_t len_offset = Config::num_start_bytes;
@@ -1557,6 +1791,11 @@ class AccumulatingReader {
    *=========================================================================*/
 
   FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
+    if constexpr (kSystemFrames) {
+      if (system_frames::is_system_start<Sys>(buffer, size)) {
+        return system_frames::parse<Sys>(buffer, size);
+      }
+    }
     if constexpr (Config::has_length || Config::has_crc) {
       return BufferParserWithCrc<Config>::parse(buffer, size, get_message_info_);
     } else {
@@ -1600,6 +1839,12 @@ class AccumulatingReader {
   ParserDiagnostics diagnostics_;
   uint8_t last_seq_;        // Last seen sequence number
   bool last_seq_valid_;     // Whether last_seq_ holds a valid value
+
+  // System frames: delivered or only counted; their sequence numbers are tracked separately.
+  bool deliver_system_frames_ = false;
+  uint8_t last_sys_seq_ = 0;
+  bool last_sys_seq_valid_ = false;
+  bool collecting_system_ = false;  // stream mode: the frame being collected is a system frame
 };
 
 /**

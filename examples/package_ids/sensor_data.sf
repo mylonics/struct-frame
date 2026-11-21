@@ -1,7 +1,6 @@
-// Package ID 1. Message ids only need to be unique inside a package.
-package sensor_data;
+/// Package ID 1. Message ids only need to be unique inside a package.
 
-option pkgid = 1;
+package sensor_data @1;
 
 enum SensorType {
   TEMPERATURE = 0;
@@ -10,18 +9,16 @@ enum SensorType {
   LIGHT = 3;
 }
 
-message SensorReading {
-  option msgid = 1;                  // wire id (1 << 8) | 1 = 257
-  SensorType type = 1;
-  float value = 2;
-  uint64 timestamp = 3;
-  string sensor_id = 4 [size=16];
+message SensorReading @1 {  /// wire id (1 << 8) | 1 = 257
+  SensorType type;
+  float value;
+  uint64 timestamp;
+  fixed_string<16> sensor_id;
 }
 
-message SensorStatus {
-  option msgid = 2;                  // wire id (1 << 8) | 2 = 258
-  string sensor_id = 1 [size=16];
-  bool online = 2;
-  float battery_percent = 3;
-  uint32 error_count = 4;
+message SensorStatus @2 {  /// wire id (1 << 8) | 2 = 258
+  fixed_string<16> sensor_id;
+  bool online;
+  float battery_percent;
+  uint32 error_count;
 }

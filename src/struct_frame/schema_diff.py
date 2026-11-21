@@ -228,8 +228,53 @@ def _isolated_generator_state(gen):
                 container.extend(saved[name])
 
 
-def _snapshot_from_schema(path):
+def _snapshot_from_legacy_schema(path):
+    """Snapshot of a schema written in the old proto-style syntax.
+
+    The schema's directory is copied to a temporary location and every old-syntax ``.sf``
+    file in it is converted with ``struct-frame migrate`` (which needs the ``migrate``
+    extra); the converted copy builds the same model as the original.
+    """
+    import shutil
+    import tempfile
     gen = importlib.import_module("struct_frame.generate")
+    try:
+        from struct_frame.schema import legacy_proto
+        legacy_proto._psp()
+    except Exception as err:  # MigrationError when proto-schema-parser is missing
+        raise SchemaLoadError(f"{path}: uses the old proto-style syntax; {err}")
+    src_dir = os.path.dirname(os.path.abspath(path))
+    with tempfile.TemporaryDirectory(prefix="sf_diff_") as tmp:
+        dst_dir = os.path.join(tmp, os.path.basename(src_dir) or "schema")
+        shutil.copytree(src_dir, dst_dir, ignore=shutil.ignore_patterns(".git", "node_modules"))
+        for dirpath, _dirs, files in os.walk(dst_dir):
+            for name in files:
+                if not name.endswith((".sf", ".proto")):
+                    continue
+                file_path = os.path.join(dirpath, name)
+                with open(file_path, encoding="utf-8") as handle:
+                    text = handle.read()
+                if not gen.looks_like_legacy_syntax(text):
+                    continue
+                try:
+                    new_text, _warnings = legacy_proto.migrate_text(text, file_path)
+                except legacy_proto.MigrationError as err:
+                    raise SchemaLoadError(f"{path}: cannot read the old syntax: {err}")
+                with open(file_path, "w", encoding="utf-8", newline="\n") as handle:
+                    handle.write(new_text)
+        return _snapshot_from_schema(os.path.join(dst_dir, os.path.basename(path)), legacy=False)
+
+
+def _snapshot_from_schema(path, legacy=None):
+    gen = importlib.import_module("struct_frame.generate")
+    if legacy is None:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                legacy = gen.looks_like_legacy_syntax(handle.read())
+        except (OSError, UnicodeDecodeError):
+            legacy = False
+        if legacy:
+            return _snapshot_from_legacy_schema(path)
     log = io.StringIO()
     with _isolated_generator_state(gen), contextlib.redirect_stdout(log):
         try:

@@ -34,6 +34,13 @@ static void drive(const uint8_t* data, size_t size) {
     for (int guard = 0; guard < 100000 && reader.try_next(f); guard++) {
     }
   }
+  // Stream mode (its own state machine, including the system-frame header check),
+  // with system frames delivered.
+  AccumulatingReader<Config, 1024, MessageInfo (*)(uint16_t)> stream(get_info);
+  stream.set_deliver_system_frames(true);
+  for (size_t i = 0; i < size; i++) {
+    (void)stream.push_byte(data[i]);
+  }
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {

@@ -113,17 +113,26 @@ def corrupted_stream(profile: str, count: int = 60, seed: int = 2):
 
 
 def render(frames) -> str:
-    return "".join(f"{i} {n} {h}\n" for i, n, h in frames)
+    return "".join(" ".join(str(x) for x in row) + "\n" for row in frames)
 
 
 def parse_output(text: str):
     return [tuple(int(x) for x in line.split()) for line in text.splitlines() if line.strip()]
 
 
-def reference_decode(profile: str, stream: bytes, chunk: int):
-    """Decode with the Python runtime (the oracle other languages are compared with)."""
+SYSTEM_ID_OFFSET = 65536   # drivers print system frames as msg_id + 65536
+
+
+def reference_decode(profile: str, stream: bytes, chunk: int, system: bool = False):
+    """Decode with the Python runtime (the oracle other languages are compared with).
+
+    With ``system`` the reader delivers system frames (reported as msg_id + 65536) and the
+    output ends with ``(-1, cnt_system_frames, cnt_system_rejected, cnt_crc_failures,
+    cnt_seq_gaps)``, as the drivers print.
+    """
     import frame_profiles as fp
-    reader = fp.AccumulatingReader(config_for(profile), get_message_info=get_message_info, buffer_size=1024)
+    reader = fp.AccumulatingReader(config_for(profile), get_message_info=get_message_info, buffer_size=1024,
+                                   deliver_system_frames=system)
     out = []
     pos = 0
     while pos < len(stream):
@@ -136,8 +145,104 @@ def reference_decode(profile: str, stream: bytes, chunk: int):
             if not info.valid:
                 continue
             data = bytes(info.msg_data)
-            out.append((info.msg_id, len(data), fnv1a(data)))
+            out.append((info.msg_id + (SYSTEM_ID_OFFSET if info.is_system else 0), len(data), fnv1a(data)))
+    if system:
+        d = reader.diagnostics
+        out.append((-1, d.cnt_system_frames, d.cnt_system_rejected, d.cnt_crc_failures, d.cnt_seq_gaps))
     return out
+
+
+# Profiles whose header can carry system frames (payload type 9, start byte 0x79).
+SYSTEM_PROFILES = ["standard", "sensor", "bulk", "network"]
+
+
+def _system_message(rng):
+    """A random system message and tail (tails stay small: frames must fit every reader)."""
+    import sf_system as sf
+    import system_frames
+    choice = rng.randrange(6)
+    if choice == 0:
+        msg = sf.Heartbeat(uptime_ms=rng.randrange(1 << 32), counter=rng.randrange(1 << 32),
+                           wire_hash=rng.randrange(1 << 32), interval_ms=rng.randrange(1 << 16),
+                           protocol_version=1, state=rng.randrange(5))
+    elif choice == 1:
+        msg = sf.Ping(t_send_us=rng.randrange(1 << 64), seq=rng.randrange(1 << 32))
+    elif choice == 2:
+        msg = sf.Pong(t_send_us=rng.randrange(1 << 64), seq=rng.randrange(1 << 32), max_tail=1024)
+    elif choice == 3:
+        msg = sf.LinkTestData(seq=rng.randrange(1 << 32), test_id=rng.randrange(256))
+    elif choice == 4:
+        msg = sf.RpcRequest(call_id=rng.randrange(1 << 16), payload_id=rng.randrange(256),
+                            payload_magic1=rng.randrange(256), payload_magic2=rng.randrange(256))
+    else:
+        msg = sf.LinkStats(rx_bytes=rng.randrange(1 << 64), crc_failures=rng.randrange(1 << 32))
+    takes_tail = type(msg).MSG_ID in system_frames.TAIL_MESSAGES
+    tail = bytes(rng.randrange(256) for _ in range(rng.randrange(0, 65))) if takes_tail else b""
+    return msg, tail
+
+
+def _stray_system_header(profile: str, rng) -> bytes:
+    """A system start followed by a header no reader may accept (unknown system message id),
+    so it is rejected and rescanned rather than swallowing the frames after it."""
+    start = b"\x79" if profile == "sensor" else b"\x90\x79"
+    plain = [b for b in range(256) if b not in (0x79, 0x90)]
+    return start + bytes([rng.choice(plain), rng.choice(plain), rng.choice(plain), 5, 0, 0x7F])
+
+
+def system_stream(profile: str, count: int = 40, seed: int = 4):
+    """Application frames interleaved with system frames, corrupted system frames and
+    skipped system sequence numbers, plus (CRC profiles) garbage and stray system headers.
+    Returns (stream, expected_hidden, expected_delivered).
+
+    Garbage never contains 0x79 or 0x90, so every frame stays recoverable; the expected
+    lists are what a reader reports with system frames hidden and delivered (the latter
+    ending with the (-1, system frames, rejected headers, CRC failures, sequence gaps)
+    diagnostics row). Application frames never fail: the only CRC failures and sequence
+    gaps are the system frames'."""
+    import frame_profiles as fp
+    import system_frames
+    rng = random.Random(seed ^ 0x5157)
+    cfg = config_for(profile)
+    crc = cfg.has_crc
+    frames = make_frames(profile, count, seed)
+    stream = bytearray()
+    hidden, delivered = [], []
+    sys_seq = 0
+    rejected = 0
+    systems = 0
+    crc_failures = 0
+    gaps = 0
+    for msg_id, payload, frame in frames:
+        if crc and rng.random() < 0.3:
+            stream += bytes(rng.choice([b for b in range(256) if b not in (0x79, 0x90)])
+                            for _ in range(rng.randrange(1, 6)))
+        if crc and rng.random() < 0.2:
+            stream += _stray_system_header(profile, rng)
+            rejected += 1
+        if rng.random() < 0.1:
+            # A corrupted system frame: a CRC failure. Its sequence number is not used up,
+            # so the next system frame carries it and no gap is counted.
+            msg, tail = _system_message(rng)
+            bad = bytearray(system_frames.encode(cfg, msg, tail=tail, seq=sys_seq & 0xFF, sys_id=3, comp_id=4))
+            bad[-3] ^= 0x5A           # the last payload byte
+            stream += bad
+            crc_failures += 1
+        if rng.random() < 0.5:
+            if systems and rng.random() < 0.15:
+                sys_seq += 1          # a lost system frame: one sequence gap
+                gaps += 1
+            msg, tail = _system_message(rng)
+            body = msg.serialize() + tail
+            stream += system_frames.encode(cfg, msg, tail=tail, seq=sys_seq & 0xFF, sys_id=3, comp_id=4)
+            sys_seq += 1
+            systems += 1
+            delivered.append((type(msg).MSG_ID + SYSTEM_ID_OFFSET, len(body), fnv1a(body)))
+        stream += frame
+        hidden.append((msg_id, len(payload), fnv1a(payload)))
+        delivered.append((msg_id, len(payload), fnv1a(payload)))
+    delivered.append((-1, systems, rejected, crc_failures, gaps))
+    del fp
+    return bytes(stream), hidden, delivered
 
 
 def noisy_stream(profile: str, count: int = 80, seed: int = 3):

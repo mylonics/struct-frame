@@ -20,10 +20,11 @@ typedef enum payload_type {
   PAYLOAD_SEQ = 6,                 /* [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] */
   PAYLOAD_MULTI_SYSTEM_STREAM = 7, /* [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] */
   PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM =
-      8 /* [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2] */
+      8, /* [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2] */
+  PAYLOAD_SYSTEM = 9 /* [SEQ] [SYS_ID] [COMP_ID] [LEN16] [SYS_MSG_ID] [PACKET] [CRC1] [CRC2] (system frames) */
 } payload_type_t;
 
-/* Maximum payload type value (for range checking) */
+/* Maximum application payload type value (for range checking); PAYLOAD_SYSTEM is reserved. */
 #define MAX_PAYLOAD_TYPE_VALUE 8
 
 /*===========================================================================
@@ -168,3 +169,15 @@ static const payload_config_t PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = {
     .has_sys_id = true,
     .has_comp_id = true,
     .has_pkg_id = true};
+
+/* System frames: struct-frame's own messages (heartbeat, ping, link tests, RPC), carried
+ * after a Basic or Tiny header with payload type 9 (start byte 0x79). */
+static const payload_config_t PAYLOAD_SYSTEM_CONFIG = {.payload_type = PAYLOAD_SYSTEM,
+                                                       .has_crc = true,
+                                                       .crc_bytes = 2,
+                                                       .has_length = true,
+                                                       .length_bytes = 2,
+                                                       .has_seq = true,
+                                                       .has_sys_id = true,
+                                                       .has_comp_id = true,
+                                                       .has_pkg_id = false};

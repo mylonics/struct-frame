@@ -441,9 +441,40 @@ def _where(obj):
     """``path:line: `` for a parsed schema element, or '' when its position is unknown."""
     path = getattr(obj, "source_file", None)
     line = getattr(obj, "line", None)
+    col = getattr(obj, "col", None)
     if path and line:
-        return f"{path}:{line}: "
+        return f"{path}:{line}:{col}: " if col else f"{path}:{line}: "
     return f"{path}: " if path else ""
+
+
+def _default_helper_members(lang, msg, member_name):
+    """Member names the generators add to every message for the default helpers
+    (defaults/reset/is_default and the per-field is_default predicates)."""
+    if lang == 'py':
+        return ['defaults', 'reset', 'is_default', '_FIELD_NAMES']
+    if lang in ('ts', 'js'):
+        return ['defaults', 'reset', 'isDefault', '_fieldProps']
+    if msg.id is None:
+        return []   # C/C++/C# generate the helpers only for messages with an id
+    if lang == 'cpp':
+        return ['reset', 'is_default', 'same_encoding_'] + [f'{f}_is_default' for f in msg.fields]
+    if lang == 'csharp':
+        return ['Defaults', 'Reset', 'IsDefault'] + [f'Is{member_name(f)}Default' for f in msg.fields]
+    return []
+
+
+def _csharp_class_members(msg):
+    """Constants and methods the C# generator emits on every message class, which a
+    field property (PascalCase) must not shadow (CS0102)."""
+    members = ['MaxSize', 'Serialize', 'SerializeTo', 'Deserialize', 'GetMsgId', 'GetSize',
+               'GetMagicNumbers']
+    if msg.id is not None:
+        members.append('MsgId')
+        if msg.magic_bytes:
+            members += ['Magic1', 'Magic2', 'BaseSize', 'GetBaseSize']
+    if msg.variable:
+        members += ['MinSize', 'IsVariable', 'DeserializeFixed', 'DeserializeVariable']
+    return members
 
 
 def _validate_language_names(lang, packages):
@@ -524,6 +555,13 @@ def _validate_language_names(lang, packages):
                                f"{pkg_name}.{msg_name}.{nested} (flattened nested enum)", types)
 
                 members = {}
+                # The generated default helpers are members too; a field must not take
+                # their names (in Rust fields and methods live in separate namespaces).
+                for helper in _default_helper_members(lang, msg, member_name):
+                    members[helper] = f"the generated method {helper}()"
+                if lang == 'csharp':
+                    for generated in _csharp_class_members(msg):
+                        members[generated] = f"the generated member {generated}"
                 for field_name in msg.fields:
                     site = msg.fields[field_name]
                     emitted = member_name(field_name)

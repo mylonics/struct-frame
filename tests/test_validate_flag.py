@@ -74,11 +74,13 @@ def test_validate_failure():
         # A message field that references an unknown type triggers validation
         # failure in the generator's validate_packages() path.
         bad_proto.write_text(
-            "package bad_pkg;\n"
-            "message BadMsg {\n"
-            "  option msgid = 1;\n"
-            "  NoSuchType field_a = 1;\n"
-            "}\n",
+            """\
+package bad_pkg;
+
+message BadMsg @1 {
+  NoSuchType field_a;
+}
+""",
             encoding="utf-8",
         )
         code, stdout, stderr = _run_validate(bad_proto)

@@ -9,6 +9,7 @@ Pack/Unpack methods and optional namespace support.
 
 from struct_frame import version, NamingStyleCpp, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
 import time
 
 _style_cpp = NamingStyleCpp()
@@ -138,16 +139,103 @@ def _message_has_member_initializers(msg, _seen=None):
     return False
 
 
+def _cpp_char_list(data):
+    """Brace-list body of char literals; char literals (not integers) avoid narrowing
+    errors for bytes above 0x7F."""
+    return ', '.join("'\\x%02x'" % b for b in data)
+
+
+def _cpp_bytes_of(value):
+    return value if isinstance(value, (bytes, bytearray)) else value.encode('utf-8')
+
+
+def _cpp_is_struct_field(field):
+    return not field.is_default_type and not field.is_enum and field.type_ref is not None
+
+
+def _cpp_struct_type(field, use_namespace):
+    return _cpp_field_base_type(field, use_namespace)
+
+
+def _cpp_enum_expr(field, member, use_namespace):
+    return f'{_cpp_field_base_type(field, use_namespace)}::{_style_cpp.enum_entry(member)}'
+
+
+def _cpp_element_expr(field, value, use_namespace):
+    """Initializer expression for one element of *field* holding canonical *value*."""
+    if field.is_enum:
+        return _cpp_enum_expr(field, value, use_namespace)
+    if field.field_type in ("string", "bytes"):
+        data = _cpp_bytes_of(value)
+        if field.is_array or field.size_option is not None:
+            return '{' + _cpp_char_list(data) + '}'
+        return '{' + f'{len(data)}, {{{_cpp_char_list(data)}}}' + '}'
+    if field.is_default_type:
+        return _lit.c_scalar(field.field_type, value, cpp=True)
+    # A struct value: start from the struct's own defaults, then set the listed fields.
+    struct_type = _cpp_struct_type(field, use_namespace)
+    stmts = []
+    for name, sub_value in value.items():
+        stmts.extend(_cpp_value_stmts(field.type_ref.fields[name], sub_value, f'v.{name}', use_namespace))
+    return f'[] {{ {struct_type} v{{}}; {" ".join(stmts)} return v; }}()'
+
+
+def _cpp_value_stmts(field, value, lhs, use_namespace):
+    """Statements that set the (already default-initialized) lvalue *lhs* to *value*."""
+    if not field.is_array:
+        if field.field_type in ("string", "bytes"):
+            data = _cpp_bytes_of(value)
+            stmts = [f'std::memset(&{lhs}, 0, sizeof({lhs}));']
+            if field.size_option is not None:
+                target = lhs
+            else:
+                target = f'{lhs}.data'
+                if data:
+                    stmts.append(f'{lhs}.length = {len(data)};')
+            if data:
+                stmts.append(f'std::memcpy({target}, "{"".join(chr(92) + "x%02x" % b for b in data)}", {len(data)});')
+            return stmts
+        if _cpp_is_struct_field(field):
+            stmts = []
+            for name, sub_value in value.items():
+                stmts.extend(_cpp_value_stmts(field.type_ref.fields[name], sub_value, f'{lhs}.{name}',
+                                              use_namespace))
+            return stmts
+        return [f'{lhs} = {_cpp_element_expr(field, value, use_namespace)};']
+    # Arrays: reset every slot to the element default, then set the listed elements.
+    bounded = field.size_option is None
+    data = f'{lhs}.data' if bounded else lhs
+    if _cpp_is_struct_field(field):
+        stmts = [f'for (auto& e_ : {data}) e_ = {_cpp_struct_type(field, use_namespace)}{{}};']
+    else:
+        stmts = [f'std::memset(&{data}, 0, sizeof({data}));']
+    if bounded:
+        stmts.append(f'{lhs}.count = {len(value)};')
+    for index, item in enumerate(value):
+        target = f'{data}[{index}]'
+        if field.field_type in ("string", "bytes"):
+            payload = _cpp_bytes_of(item)
+            if payload:
+                stmts.append(f'std::memcpy({target}, "{"".join(chr(92) + "x%02x" % b for b in payload)}", {len(payload)});')
+        else:
+            stmts.append(f'{target} = {_cpp_element_expr(field, item, use_namespace)};')
+    return stmts
+
+
+def _cpp_array_initializer(field, use_namespace):
+    """`` = {...}`` default member initializer of an array field with a default."""
+    elems = ', '.join(_cpp_element_expr(field, v, use_namespace) for v in field.default)
+    if field.size_option is not None:
+        return f' = {{{elems}}}'
+    return f' = {{{len(field.default)}, {{{elems}}}}}'
+
+
 def _cpp_scalar_default_literal(field, use_namespace=False):
     """Render field.default as a C++ literal for a default member initializer."""
     if field.is_enum:
         base_type = _cpp_field_base_type(field, use_namespace)
         return f'{base_type}::{_style_cpp.enum_entry(field.default)}'
-    if field.field_type == "bool":
-        return "true" if field.default else "false"
-    if field.field_type == "float":
-        return f"{field.default}f"
-    return f"{field.default}"
+    return _lit.c_scalar(field.field_type, field.default, cpp=True)
 
 
 class FieldCppGen():
@@ -160,6 +248,7 @@ class FieldCppGen():
 
         # Handle arrays
         if field.is_array:
+            array_init = _cpp_array_initializer(field, use_namespace) if field.default else ""
             if field.field_type in ("string", "bytes"):
                 # String arrays need both array size and individual string size
                 if field.size_option is not None:
@@ -189,21 +278,23 @@ class FieldCppGen():
                     declaration = f"{base_type} {var_name}[1];"  # Fallback
                     comment = "  // Array (error in size specification)"
 
+            if array_init:
+                declaration = declaration[:-1] + array_init + ";"
             result += f"    {declaration}{comment}"
 
         # Handle regular strings
         elif field.field_type in ("string", "bytes"):
-            default_text = field.default.encode('utf-8') if field.default is not None else b""
+            default_text = _cpp_bytes_of(field.default) if field.default is not None else b""
             if field.size_option is not None:
                 # Fixed string: exactly size_option characters
-                init = f" = {{{_c_byte_array_literal(default_text)}}}" if default_text else ""
+                init = f" = {{{_cpp_char_list(default_text)}}}" if default_text else ""
                 declaration = f"char {var_name}[{field.size_option}]{init};"
                 comment = f"  // Fixed string: exactly {field.size_option} chars"
             elif field.max_size is not None:
                 # Variable string: length (uint8_t or uint16_t) + max characters
                 length_type = "uint16_t" if field.max_size > 255 else "uint8_t"
                 length_init = f" = {len(default_text)}" if default_text else ""
-                data_init = f" = {{{_c_byte_array_literal(default_text)}}}" if default_text else ""
+                data_init = f" = {{{_cpp_char_list(default_text)}}}" if default_text else ""
                 declaration = (f"struct {{ {length_type} length{length_init}; "
                                 f"char data[{field.max_size}]{data_init}; }} {var_name};")
                 comment = f"  // Variable string: up to {field.max_size} chars"
@@ -215,7 +306,12 @@ class FieldCppGen():
 
         # Handle regular fields
         else:
-            init = f" = {_cpp_scalar_default_literal(field, use_namespace)}" if field.default is not None else ""
+            if field.default is None:
+                init = ""
+            elif _cpp_is_struct_field(field):
+                init = f" = {_cpp_element_expr(field, field.default, use_namespace)}"
+            else:
+                init = f" = {_cpp_scalar_default_literal(field, use_namespace)}"
             result += f"    {base_type} {var_name}{init};"
 
         # Add leading comments
@@ -493,6 +589,7 @@ class MessageCppGen():
         # Add unified unpack() method only for messages with MSG_ID (have MessageBase)
         if has_msg_id:
             result += MessageCppGen._generate_unified_unpack(msg, structName)
+            result += MessageCppGen._generate_default_helpers(msg, structName)
         
         # Add envelope methods if this is an envelope message
         if msg.is_envelope:
@@ -803,6 +900,28 @@ class MessageCppGen():
         return result
 
     @staticmethod
+    def _generate_default_helpers(msg, structName):
+        """reset() / is_default() / <field>_is_default() (compared by encoding)."""
+        T = structName
+        r = '\n    /** Reset every field to its schema default. */\n'
+        r += f'    void reset() {{ *this = {T}{{}}; }}\n'
+        r += '\n    /** True when this message encodes exactly like one at its schema defaults. */\n'
+        r += f'    bool is_default() const {{ return same_encoding_(*this, {T}{{}}); }}\n'
+        for name in msg.fields:
+            r += f'\n    /** True when field {name} holds its schema default. */\n'
+            r += f'    bool {name}_is_default() const {{\n'
+            r += f'        {T} probe{{}};\n'
+            r += f'        std::memcpy(static_cast<void*>(&probe.{name}), &{name}, sizeof(probe.{name}));\n'
+            r += f'        return same_encoding_(probe, {T}{{}});\n'
+            r += '    }\n'
+        r += f'\n    static bool same_encoding_(const {T}& a, const {T}& b) {{\n'
+        r += '        uint8_t x[MAX_SIZE + 1], y[MAX_SIZE + 1];\n'
+        r += '        size_t nx = a.serialize(x), ny = b.serialize(y);\n'
+        r += '        return nx == ny && std::memcmp(x, y, nx) == 0;\n'
+        r += '    }\n'
+        return r
+
+    @staticmethod
     def _generate_unified_unpack(msg, structName):
         """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
@@ -1054,7 +1173,9 @@ class FileCppGen():
         # whose package contains envelope/oneof groupings; ensure the include
         # is always present so generated headers compile standalone.
         yield '#include <type_traits>\n'
-        
+        if _lit.package_needs_math(package):
+            yield '#include <cmath>  // INFINITY / NAN\n'
+
         # Always include frame_base.hpp for FrameMsgInfo and MessageBase
         # (needed for deserialize(FrameMsgInfo) overload and message base class)
         # Use angle-bracket form so the -I search path is used rather than the
@@ -1081,6 +1202,15 @@ class FileCppGen():
             # Add package ID constant
             yield f'/* Package ID for extended message IDs */\n'
             yield f'constexpr uint8_t PACKAGE_ID = {package.package_id};\n\n'
+
+        consts = _lit.package_consts(package)
+        if consts:
+            yield '/* Constants */\n'
+            for const in consts:
+                for line in _lit.doc_lines(const.comments):
+                    yield f'// {line}\n'.replace('//  \n', '//\n')
+                yield _lit.cpp_const(_lit.const_name(const), const.const_type, const.value) + '\n'
+            yield '\n'
 
         # include additional header files if available in the future
 

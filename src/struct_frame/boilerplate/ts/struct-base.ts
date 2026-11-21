@@ -74,6 +74,52 @@ export abstract class MessageBase {
   }
 
   /**
+   * A new message with every field at its schema default.
+   */
+  static defaults<T extends MessageBase>(this: new () => T): T {
+    return new this();
+  }
+
+  /**
+   * Set every field back to its schema default.
+   * @returns this message, for chaining
+   */
+  reset(): this {
+    const defaults = (this.constructor as MessageConstructor)._defaultBytes;
+    if (defaults) {
+      Buffer.from(defaults.buffer, defaults.byteOffset, defaults.byteLength).copy(this._buffer);
+    } else {
+      this._buffer.fill(0);
+    }
+    return this;
+  }
+
+  /**
+   * True when the message (or, with a field name, that one field) encodes exactly
+   * like a message at its schema defaults.
+   * @param field Optional schema field name (camelCase, e.g. "retryMs")
+   */
+  isDefault(field?: string): boolean {
+    const ctor = this.constructor as new () => MessageBase;
+    const encode = (m: MessageBase): Buffer =>
+      Buffer.from((m as unknown as { serialize(): Uint8Array }).serialize());
+    const fresh = encode(new ctor());
+    if (field === undefined) {
+      return encode(this).equals(fresh);
+    }
+    const props = (this.constructor as unknown as { _fieldProps?: Record<string, readonly string[]> })
+      ._fieldProps?.[field];
+    if (!props) {
+      throw new Error(`${ctor.name} has no field '${field}'`);
+    }
+    const probe = new ctor() as unknown as Record<string, unknown>;
+    for (const prop of props) {
+      probe[prop] = (this as unknown as Record<string, unknown>)[prop];
+    }
+    return encode(probe as unknown as MessageBase).equals(fresh);
+  }
+
+  /**
    * Get the size of this message in bytes.
    */
   getSize(): number {

@@ -23,49 +23,44 @@ from pathlib import Path
 from test_utils import SRC_DIR, _check
 
 BASE = """\
-// Header comment
-package demo;
-option pkgid = 7;
+/// Header comment
+
+package demo @7;
 
 enum Mode {
   IDLE = 0;
   RUN = 1;
 }
 
-message Small {
-  uint8 v = 1;
+struct Small {
+  uint8 v;
 }
 
-message Big {
-  uint32 v = 1;
+struct Big {
+  uint32 v;
 }
 
-message Inner {
-  option msgid = 1;
-  uint8 a = 1;
-  uint16 b = 2;
+message Inner @1 {
+  uint8 a;
+  uint16 b;
 }
 
-message Telemetry {
-  option msgid = 2;
-  uint32 time = 1;
-  Inner inner = 2;
-  Mode mode = 3;
-  string name = 4 [max_size = 16];
+message Telemetry @2 {
+  uint32 time;
+  Inner inner;
+  Mode mode;
+  string<16> name;
 }
 
-message Choice {
-  option msgid = 3;
-  oneof data {
-    option discriminator = "field_order";
-    Small small = 1;
-    Big big = 2;
+message Choice @3 {
+  oneof data [discriminator = field_order] {
+    Small small;
+    Big big;
   }
 }
 
-message Evolving {
-  option msgid = 4;
-  uint8 a = 1;
+message Evolving @4 {
+  uint8 a;
 }
 """
 
@@ -117,18 +112,41 @@ def test_identical_schemas_have_no_differences():
 
 
 def test_comments_and_declaration_order_are_ignored():
-    reordered = BASE.replace("// Header comment", "// A different header\n// with more lines")
-    reordered = _edit(reordered, "message Small {\n  uint8 v = 1;\n}\n\n", "")
-    reordered = reordered + "\n// moved to the end\nmessage Small {\n  // doc\n  uint8 v = 1;\n}\n"
+    reordered = _edit(BASE, "/// Header comment", "/// A different header\n/// with more lines")
+    reordered = _edit(reordered, """\
+struct Small {
+  uint8 v;
+}
+""", "")
+    reordered = reordered + """\
+
+/// moved to the end
+struct Small {
+  /// doc
+  uint8 v;
+}
+"""
     reordered = _edit(reordered, "  IDLE = 0;\n  RUN = 1;\n", "  // run first\n  RUN = 1;\n  IDLE = 0;\n")
     code, report = _report(BASE, reordered)
     _check(code == 0 and report["changes"] == [], f"docs/order must not be reported: {report['changes']}")
 
 
 def test_file_moves_are_reported_separately_and_never_fail():
-    inner = "package demo;\noption pkgid = 7;\n\nmessage Inner {\n  option msgid = 1;\n  uint8 a = 1;\n  uint16 b = 2;\n}\n"
-    moved = _edit(BASE, "message Inner {\n  option msgid = 1;\n  uint8 a = 1;\n  uint16 b = 2;\n}\n\n", "")
-    moved = _edit(moved, "option pkgid = 7;\n", 'option pkgid = 7;\nimport "inner.sf";\n')
+    inner = """\
+package demo @7;
+
+message Inner @1 {
+  uint8 a;
+  uint16 b;
+}
+"""
+    moved = _edit(BASE, """\
+message Inner @1 {
+  uint8 a;
+  uint16 b;
+}
+""", "")
+    moved = _edit(moved, "package demo @7;\n", 'package demo @7;\n\nimport "inner.sf";\n')
     code, report = _report(BASE, moved, "--fail-on", "any", files={"inner.sf": inner})
     _check(code == 0, f"file moves must never fail, got {code}: {report}")
     _check(_kinds(report, "move") == ["file_moved"], f"unexpected moves: {report['changes']}")
@@ -142,20 +160,20 @@ def test_file_moves_are_reported_separately_and_never_fail():
 # ---------------------------------------------------------------------------
 
 def test_message_id_change_is_breaking():
-    code, report = _report(BASE, _edit(BASE, "msgid = 2;", "msgid = 20;"))
+    code, report = _report(BASE, _edit(BASE, "message Telemetry @2 {", "message Telemetry @20 {"))
     _check(code == 1, "msgid change must fail")
     _find(report, "msgid_changed", "demo.Telemetry")
     _check(report["wire_compatible"] is False, "msgid change is not wire compatible")
 
 
 def test_package_id_change_is_breaking():
-    code, report = _report(BASE, _edit(BASE, "pkgid = 7", "pkgid = 8"))
+    code, report = _report(BASE, _edit(BASE, "package demo @7", "package demo @8"))
     _check(code == 1, "package id change must fail")
     _find(report, "package_id_changed", "demo")
 
 
 def test_field_type_change_is_breaking():
-    code, report = _report(BASE, _edit(BASE, "uint32 time = 1;", "uint64 time = 1;"))
+    code, report = _report(BASE, _edit(BASE, "uint32 time;", "uint64 time;"))
     _check(code == 1, "field type change must fail")
     change = _find(report, "field_type_changed", "demo.Telemetry.time")
     _check(change["old"] == "uint32" and change["new"] == "uint64", f"types not reported: {change}")
@@ -164,25 +182,25 @@ def test_field_type_change_is_breaking():
 
 
 def test_field_size_option_change_is_breaking():
-    code, report = _report(BASE, _edit(BASE, "max_size = 16", "max_size = 32"))
+    code, report = _report(BASE, _edit(BASE, "string<16> name", "string<32> name"))
     _check(code == 1, "string size change must fail")
     _find(report, "field_type_changed", "demo.Telemetry.name")
 
 
 def test_removed_and_base_added_fields_are_breaking():
-    removed = _edit(BASE, "  string name = 4 [max_size = 16];\n", "")
+    removed = _edit(BASE, "  string<16> name;\n", "")
     code, report = _report(BASE, removed)
     _check(code == 1, "removing a field must fail")
     _find(report, "field_removed", "demo.Telemetry.name")
 
-    added = _edit(BASE, "  string name = 4 [max_size = 16];\n", "  string name = 4 [max_size = 16];\n  uint8 extra = 5;\n")
+    added = _edit(BASE, "  string<16> name;\n", "  string<16> name;\n  uint8 extra;\n")
     code, report = _report(BASE, added)
     _check(code == 1, "adding a field to the base layout must fail")
     _find(report, "field_added_to_base", "demo.Telemetry.extra")
 
 
 def test_field_reorder_is_one_breaking_finding():
-    swapped = _edit(BASE, "  uint8 a = 1;\n  uint16 b = 2;\n", "  uint16 b = 1;\n  uint8 a = 2;\n")
+    swapped = _edit(BASE, "  uint8 a;\n  uint16 b;\n", "  uint16 b;\n  uint8 a;\n")
     code, report = _report(BASE, swapped)
     _check(code == 1, "reordering fields must fail")
     change = _find(report, "fields_reordered", "demo.Inner")
@@ -193,20 +211,22 @@ def test_field_reorder_is_one_breaking_finding():
 def test_reorder_with_extension_addition_is_still_breaking():
     old = """\
 package demo;
-message Evolving {
-  option msgid = 4;
-  uint8 a = 1;
-  uint8 b = 2;
+
+message Evolving @4 {
+  uint8 a;
+  uint8 b;
 }
 """
     new = """\
 package demo;
-message Evolving {
-  option msgid = 4;
-  uint8 b = 1;
-  uint8 a = 2;
-  option extensions_start = 3;
-  uint8 c = 3;
+
+message Evolving @4 {
+  uint8 b;
+  uint8 a;
+
+  extensions {
+    uint8 c;
+  }
 }
 """
     code, report = _report(old, new)
@@ -218,12 +238,21 @@ message Evolving {
 
 
 def test_message_removed_and_added():
-    removed = _edit(BASE, "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n}\n", "")
+    removed = _edit(BASE, """\
+message Evolving @4 {
+  uint8 a;
+}
+""", "")
     code, report = _report(BASE, removed)
     _check(code == 1, "removed message must fail")
     _find(report, "message_removed", "demo.Evolving")
 
-    added = BASE + "\nmessage Extra {\n  option msgid = 9;\n  uint8 a = 1;\n}\n"
+    added = BASE + """\
+
+message Extra @9 {
+  uint8 a;
+}
+"""
     code, report = _report(BASE, added)
     _check(code == 0, "adding a message is wire compatible")
     _find(report, "message_added", "demo.Extra")
@@ -235,7 +264,7 @@ def test_message_removed_and_added():
 # ---------------------------------------------------------------------------
 
 def test_oneof_variant_reorder_is_breaking_with_discriminator_values():
-    swapped = _edit(BASE, "    Small small = 1;\n    Big big = 2;\n", "    Big big = 1;\n    Small small = 2;\n")
+    swapped = _edit(BASE, "    Small small;\n    Big big;\n", "    Big big;\n    Small small;\n")
     code, report = _report(BASE, swapped)
     _check(code == 1, "variant reordering must fail")
     change = _find(report, "variants_reordered", "demo.Choice.data")
@@ -245,19 +274,19 @@ def test_oneof_variant_reorder_is_breaking_with_discriminator_values():
 
 
 def test_oneof_variant_type_change_and_removal_are_breaking():
-    retyped = _edit(BASE, "    Big big = 2;\n", "    Small big = 2;\n")
+    retyped = _edit(BASE, "    Big big;\n", "    Small big;\n")
     code, report = _report(BASE, retyped)
     _check(code == 1, "variant type change must fail")
     _find(report, "variant_type_changed", "demo.Choice.data.big")
 
-    removed = _edit(BASE, "    Big big = 2;\n", "")
+    removed = _edit(BASE, "    Big big;\n", "")
     code, report = _report(BASE, removed)
     _check(code == 1, "variant removal must fail")
     _find(report, "variant_removed", "demo.Choice.data.big")
 
 
 def test_oneof_variant_rename_is_source_only():
-    renamed = _edit(BASE, "    Big big = 2;\n", "    Big large = 2;\n")
+    renamed = _edit(BASE, "    Big big;\n", "    Big large;\n")
     code, report = _report(BASE, renamed)
     _check(code == 0, "a variant rename keeps the wire format")
     _check(_kinds(report, "rename") == ["variant_renamed"], f"unexpected: {report['changes']}")
@@ -269,18 +298,25 @@ def test_oneof_variant_rename_is_source_only():
 # ---------------------------------------------------------------------------
 
 def test_appended_extension_field_and_variant_are_compatible():
-    extended = _edit(BASE, "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n}",
-                     "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n\n  option extensions_start = 2;\n  uint32 b = 2;\n}")
+    extended = _edit(BASE, "message Evolving @4 {\n  uint8 a;\n}",
+                     """\
+message Evolving @4 {
+  uint8 a;
+
+  extensions {
+    uint32 b;
+  }
+}""")
     code, report = _report(BASE, extended)
     _check(code == 0, f"appending an extension must be compatible: {report['changes']}")
     _check(_kinds(report, "breaking") == [], f"unexpected breaking: {report['changes']}")
     _find(report, "field_extension_added", "demo.Evolving.b")
     _find(report, "extensions_start_changed", "demo.Evolving")
 
-    with_variant = _edit(BASE, "    Big big = 2;\n",
-                         "    Big big = 2;\n\n    option extensions_start = 3;\n    Mid mid = 3;\n")
-    with_variant = _edit(with_variant, "message Inner {", "message Mid {\n  uint16 v = 1;\n}\n\nmessage Inner {")
-    base_with_mid = _edit(BASE, "message Inner {", "message Mid {\n  uint16 v = 1;\n}\n\nmessage Inner {")
+    with_variant = _edit(BASE, "    Big big;\n",
+                         "    Big big;\n    extensions {\n      Mid mid;\n    }\n")
+    with_variant = _edit(with_variant, "message Inner @1 {", "struct Mid {\n  uint16 v;\n}\n\nmessage Inner @1 {")
+    base_with_mid = _edit(BASE, "message Inner @1 {", "struct Mid {\n  uint16 v;\n}\n\nmessage Inner @1 {")
     code, report = _report(base_with_mid, with_variant)
     _check(code == 0, f"appending an extension variant must be compatible: {report['changes']}")
     _find(report, "variant_extension_added", "demo.Choice.data.mid")
@@ -289,23 +325,21 @@ def test_appended_extension_field_and_variant_are_compatible():
 def test_growing_oneof_union_that_shifts_later_oneof_is_breaking():
     old = """\
 package demo;
-message TwoChoices {
-  option msgid = 8;
-  oneof first {
-    option discriminator = "field_order";
-    option extensions_start = 2;
-    uint8 small = 1;
-    uint8 extra = 2;
+
+message TwoChoices @8 {
+  oneof first [discriminator = field_order] {
+    uint8 small;
+    extensions {
+      uint8 extra;
+    }
   }
-  oneof second {
-    option discriminator = "field_order";
-    uint8 other = 1;
+
+  oneof second [discriminator = field_order] {
+    uint8 other;
   }
 }
 """
-    new = old.replace(
-        "    uint8 extra = 2;\n",
-        "    uint8 extra = 2;\n    uint64 large = 3;\n")
+    new = _edit(old, "      uint8 extra;\n", "      uint8 extra;\n      uint64 large;\n")
     code, report = _report(old, new)
     _check(code == 1, f"union growth must not shift the later discriminator compatibly: {report}")
     _find(report, "variant_extension_added", "demo.TwoChoices.first.large")
@@ -316,9 +350,13 @@ message TwoChoices {
 
 
 def test_moving_a_field_into_the_extension_block_is_breaking():
-    base = _edit(BASE, "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n}",
-                 "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n  uint32 b = 2;\n}")
-    ext = _edit(base, "uint8 a = 1;\n  uint32 b = 2;\n}", "uint8 a = 1;\n  option extensions_start = 2;\n  uint32 b = 2;\n}")
+    base = _edit(BASE, "message Evolving @4 {\n  uint8 a;\n}",
+                 """\
+message Evolving @4 {
+  uint8 a;
+  uint32 b;
+}""")
+    ext = _edit(base, "  uint8 a;\n  uint32 b;\n}", "  uint8 a;\n  extensions {\n    uint32 b;\n  }\n}")
     code, report = _report(base, ext)
     _check(code == 1, f"turning a base field into an extension changes the base layout: {report['changes']}")
     _find(report, "field_extension_changed", "demo.Evolving.b")
@@ -353,7 +391,7 @@ def test_enum_changes():
 
 def test_enum_rename_is_source_only_and_not_a_field_type_change():
     renamed = _edit(BASE, "enum Mode {", "enum Operation {")
-    renamed = _edit(renamed, "Mode mode = 3;", "Operation mode = 3;")
+    renamed = _edit(renamed, "Mode mode;", "Operation mode;")
     code, report = _report(BASE, renamed)
     _check(code == 0, f"enum rename must be wire compatible: {report['changes']}")
     _check(_kinds(report, "rename") == ["enum_renamed"], f"unexpected: {report['changes']}")
@@ -361,8 +399,16 @@ def test_enum_rename_is_source_only_and_not_a_field_type_change():
 
 
 def test_message_scoped_enums_follow_their_message():
-    base = _edit(BASE, "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n}",
-                 "message Evolving {\n  option msgid = 4;\n  enum Kind {\n    A = 0;\n    B = 1;\n  }\n  Kind kind = 1;\n}")
+    base = _edit(BASE, "message Evolving @4 {\n  uint8 a;\n}",
+                 """\
+message Evolving @4 {
+  enum Kind {
+    A = 0;
+    B = 1;
+  }
+
+  Kind kind;
+}""")
     code, report = _report(base, _edit(base, "B = 1;", "B = 3;"))
     _check(code == 1, "nested enum value change must fail")
     _find(report, "enum_entry_value_changed", "demo.Evolving.Kind.B")
@@ -375,15 +421,29 @@ def test_message_scoped_enums_follow_their_message():
     code, report = _report(base, _edit(base, "enum Kind", "enum Type").replace("Kind kind", "Type kind"))
     _check(code == 0 and _kinds(report, "rename") == ["enum_renamed"], f"nested enum rename: {report['changes']}")
 
-    flattened = _edit(base, "  enum Kind {\n    A = 0;\n    B = 1;\n  }\n  Kind kind = 1;", "  uint8 kind = 1;")
+    flattened = _edit(base, "  enum Kind {\n    A = 0;\n    B = 1;\n  }\n\n  Kind kind;", "  uint8 kind;")
     code, report = _report(base, flattened)
     _check(code == 1, "removing a nested enum must fail")
     _find(report, "enum_removed", "demo.Evolving.Kind")
 
 
 def test_multi_package_schemas():
-    other = "package other;\noption pkgid = 8;\n\nmessage Ping {\n  option msgid = 1;\n  uint8 seq = 1;\n}\n"
-    main = 'package demo;\noption pkgid = 7;\nimport "other.sf";\n\nmessage Wrap {\n  option msgid = 1;\n  other.Ping ping = 1;\n}\n'
+    other = """\
+package other @8;
+
+message Ping @1 {
+  uint8 seq;
+}
+"""
+    main = """\
+package demo @7;
+
+import "other.sf";
+
+message Wrap @1 {
+  other.Ping ping;
+}
+"""
     code, report = _report(main, main, files={"other.sf": other})
     _check(code == 0 and report["changes"] == [], f"identical multi-package schemas: {report['changes']}")
 
@@ -412,7 +472,7 @@ def test_multi_package_schemas():
 # ---------------------------------------------------------------------------
 
 def test_field_and_message_renames_are_reported_separately():
-    renamed = _edit(BASE, "uint32 time = 1;", "uint32 timestamp = 1;")
+    renamed = _edit(BASE, "uint32 time;", "uint32 timestamp;")
     code, report = _report(BASE, renamed)
     _check(code == 0, "a field rename keeps the wire format")
     _check(_kinds(report, "rename") == ["field_renamed"], f"unexpected: {report['changes']}")
@@ -428,7 +488,7 @@ def test_message_rename_changes_magic_bytes_of_embedding_messages():
     """Magic bytes hash the *name* of embedded message types, so renaming a
     message that others embed is not wire-neutral, even though the message ID is
     unchanged.  The rename and the magic-byte change are reported separately."""
-    renamed = BASE.replace("message Inner", "message Core").replace("Inner inner = 2;", "Core inner = 2;")
+    renamed = _edit(_edit(BASE, "message Inner", "message Core"), "Inner inner;", "Core inner;")
     code, report = _report(BASE, renamed)
     _check(code == 1, "renaming an embedded message changes the embedding message's magic bytes")
     _find(report, "message_renamed", "demo.Inner")
@@ -451,9 +511,9 @@ def test_rename_of_unembedded_message_is_source_only():
 # ---------------------------------------------------------------------------
 
 def test_default_change_is_compatible():
-    base = _edit(BASE, "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n}",
-                 "message Evolving {\n  option msgid = 4;\n  uint8 a = 1 [default = 1];\n}")
-    new = _edit(base, "[default = 1]", "[default = 2]")
+    base = _edit(BASE, "message Evolving @4 {\n  uint8 a;\n}",
+                 "message Evolving @4 {\n  uint8 a = 1;\n}")
+    new = _edit(base, "uint8 a = 1;", "uint8 a = 2;")
     code, report = _report(base, new)
     _check(code == 0, "a default change does not alter the wire format")
     _find(report, "field_default_changed", "demo.Evolving.a")
@@ -464,8 +524,8 @@ def test_default_change_is_compatible():
 # ---------------------------------------------------------------------------
 
 def test_text_report_groups_categories():
-    renamed = _edit(BASE, "uint32 time = 1;", "uint32 timestamp = 1;")
-    changed = _edit(renamed, "msgid = 2;", "msgid = 20;")
+    renamed = _edit(BASE, "uint32 time;", "uint32 timestamp;")
+    changed = _edit(renamed, "message Telemetry @2 {", "message Telemetry @20 {")
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
         (tmp / "old.sf").write_text(BASE)
@@ -485,7 +545,13 @@ def test_invalid_input_exits_with_error_status():
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
         (tmp / "good.sf").write_text(BASE)
-        (tmp / "bad.sf").write_text("package demo;\nmessage Broken {\n  Missing x = 1;\n}\n")
+        (tmp / "bad.sf").write_text("""\
+package demo;
+
+struct Broken {
+  Missing x;
+}
+""")
         env = dict(os.environ, PYTHONPATH=str(SRC_DIR))
 
         def run(*paths):
@@ -516,7 +582,7 @@ def test_malformed_nested_snapshot_exits_with_load_error():
 
 
 def test_snapshot_round_trip_matches_schema_diff():
-    changed = _edit(BASE, "uint32 time = 1;", "uint64 time = 1;")
+    changed = _edit(BASE, "uint32 time;", "uint64 time;")
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
         (tmp / "old.sf").write_text(BASE)
@@ -550,33 +616,33 @@ def test_schema_file_named_diff_still_generates():
 
 TRIMMED_OLD = """\
 package demo;
-message Scan {
-  option extensions_start = 2;
-  uint32 a = 1;
-  uint32 b = 2;
+
+struct Scan {
+  uint32 a;
+  extensions {
+    uint32 b;
+  }
 }
-message Env {
-  option msgid = 9;
-  option variable = true;
-  uint8 flag = 1;
-  oneof task {
-    option discriminator = "field_order";
-    Scan scan = 1;
+
+message Env @9 [variable] {
+  uint8 flag;
+  oneof task [discriminator = field_order] {
+    Scan scan;
   }
 }
 """
 
 
 def test_trimmed_trailing_oneof_variant_growth_is_compatible():
-    new = TRIMMED_OLD.replace("  uint32 b = 2;\n", "  uint32 b = 2;\n  uint64 c = 3;\n")
+    new = _edit(TRIMMED_OLD, "    uint32 b;\n", "    uint32 b;\n    uint64 c;\n")
     code, report = _report(TRIMMED_OLD, new)
     _check(code == 0, f"extension growth inside a trailing trimmed oneof must be compatible: {report}")
     _check(_kinds(report, "breaking") == [], f"unexpected breaking changes: {report['changes']}")
 
 
 def test_fixed_message_nested_growth_is_still_breaking():
-    old = TRIMMED_OLD.replace("  option variable = true;\n", "")
-    new = old.replace("  uint32 b = 2;\n", "  uint32 b = 2;\n  uint64 c = 3;\n")
+    old = _edit(TRIMMED_OLD, "message Env @9 [variable] {", "message Env @9 {")
+    new = _edit(old, "    uint32 b;\n", "    uint32 b;\n    uint64 c;\n")
     code, report = _report(old, new)
     _check(code == 1, f"growth in a fixed (non-variable) message must stay breaking: {report}")
     _find(report, "oneof_size_changed", "demo.Env.task")

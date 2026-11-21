@@ -8,11 +8,13 @@ description: Complete reference for all struct-frame command-line flags, the str
 ```bash
 struct-frame [options] [SCHEMA]
 struct-frame diff OLD NEW [options]   # wire-compatibility check (alias: schema-diff)
+struct-frame fmt FILE... [options]    # reformat schemas
+struct-frame migrate FILE... [options] # convert schemas from the old proto-style syntax
 ```
 
-`struct-frame` is installed with the package; `python -m struct_frame` is the same program. `SCHEMA` is a `.sf` file (`.proto` files with the same syntax are accepted too); its imports are followed. It may be left out when a [config file](#config-file-structframetoml) names it.
+`struct-frame` is installed with the package; `python -m struct_frame` is the same program. `SCHEMA` is a `.sf` file in the [struct-frame schema language](/basic-usage/message-definitions/); its imports are followed. It may be left out when a [config file](#config-file-structframetoml) names it.
 
-The generator exits with status `0` on success (including when generation is skipped because nothing changed), `1` when the schema cannot be parsed or fails validation (syntax errors, duplicate declarations, unknown options, name collisions) and `2` for usage errors such as an unknown option, no language selected, or a bad config file. Errors are written to stderr, so it is safe to use as a build step.
+The generator exits with status `0` on success (including when generation is skipped because nothing changed), `1` when the schema cannot be parsed or fails validation (syntax errors, duplicate declarations, unknown attributes, name collisions) and `2` for usage errors such as an unknown option, no language selected, or a bad config file. Errors are written to stderr, so it is safe to use as a build step.
 
 Every option is spelled in kebab-case (`--build-c`, `--c-path`). The older snake_case spellings (`--build_c`, `--c_path`, `--no_packed`, ...) are still accepted and behave identically.
 
@@ -118,7 +120,15 @@ Each output directory also holds `.structframe-manifest.json`, which records the
 
 ## Error messages
 
-Schema errors start with `path:line:` (for example `robot.sf:12: field 'x' is declared twice in message Pose`), the form most editors and CI log viewers turn into links. Errors go to stderr and the exit code is 1.
+Schema errors start with `path:line:col:` and a code, show the offending source line and usually a hint, for example:
+
+```
+robot.sf:12:9: error[SF0346]: field 'x' is declared twice in message Pose
+   12 |   uint8 x;
+      |         ^
+```
+
+Most editors and CI log viewers turn the location into a link. Errors go to stderr and the exit code is 1.
 
 ## `--no-packed`
 
@@ -126,7 +136,7 @@ Schema errors start with `path:line:` (for example `robot.sf:12: field 'x' is de
 struct-frame messages.sf --build-c --no-packed
 ```
 
-The C/C++ generators omit the `#pragma pack(push, 1)` / `#pragma pack(pop)` directives around the struct definitions, and every message is treated as if it had been declared with `option variable = true`. The generated `<Type>_serialize` / `<Type>_deserialize` (and the C++ `serialize` / `deserialize` methods) then read and write each field individually instead of relying on the in-memory layout of the struct. This makes the generated code portable across platforms that lack support for packed structs or have different alignment requirements. It does **not** add byte-order handling: the C and C++ payload codecs still copy values in host byte order, and the wire format is little-endian (see [Conformance](/reference/conformance/)).
+The C/C++ generators omit the `#pragma pack(push, 1)` / `#pragma pack(pop)` directives around the struct definitions, and every message is treated as if it had been declared `[variable]`. The generated `<Type>_serialize` / `<Type>_deserialize` (and the C++ `serialize` / `deserialize` methods) then read and write each field individually instead of relying on the in-memory layout of the struct. This makes the generated code portable across platforms that lack support for packed structs or have different alignment requirements. It does **not** add byte-order handling: the C and C++ payload codecs still copy values in host byte order, and the wire format is little-endian (see [Conformance](/reference/conformance/)).
 
 ## Schema Diff (Wire-Compatibility Check)
 
@@ -134,13 +144,13 @@ The C/C++ generators omit the `#pragma pack(push, 1)` / `#pragma pack(pop)` dire
 struct-frame diff OLD.sf NEW.sf [--format text|json] [--fail-on breaking|rename|any] [--write-snapshot PATH]
 ```
 
-Compares two schema revisions and reports whether the wire format is still compatible. Each side can be a `.sf` file (imports are followed) or a snapshot `.json` written by `--write-snapshot`, so a checked-in baseline can replace a second checkout. `--debug` may precede `diff`. Differences are reported in separate groups:
+Compares two schema revisions and reports whether the wire format is still compatible. Each side can be a `.sf` file (imports are followed) or a snapshot `.json` written by `--write-snapshot`, so a checked-in baseline can replace a second checkout. A file in the old proto-style syntax is accepted too when the `migrate` extra is installed (it is converted in memory), so a revision from before the syntax change can be compared with one after it. `--debug` may precede `diff`. Differences are reported in separate groups:
 
 | Group | Meaning | Examples |
 |-------|---------|----------|
-| **Wire-breaking** | The wire format changes | Changed message ID or package ID, changed magic bytes, field type/size/number changes, removed fields, fields added to the base layout, reordered fields or oneof variants (discriminator values follow declaration order), changed enum values, removed messages/enums/enum values, changed `variable`/discriminator/`max_size` options |
-| **Wire-compatible** | Additive changes that older receivers tolerate | New messages and enums, new enum values, fields and oneof variants appended after `extensions_start`, changed defaults and `min_size` |
-| **Source-only renames** | Same wire identity (message ID, field number, enum value, variant position), different source name | Renamed messages, fields, enums, enum values, oneofs and variants |
+| **Wire-breaking** | The wire format changes | Changed message ID or package ID, changed magic bytes, field type/size changes, removed fields, fields added to the base layout, reordered fields or oneof variants (discriminator values follow declaration order), changed enum values, removed messages/enums/enum values, changed `variable`/discriminator/`max_size` attributes |
+| **Wire-compatible** | Additive changes that older receivers tolerate | New messages and enums, new enum values, fields and oneof variants appended to an `extensions` block, changed defaults and `min_size` |
+| **Source-only renames** | Same wire identity (message ID, field position, enum value, variant position), different source name | Renamed messages, fields, enums, enum values, oneofs and variants |
 | **File moves** | A declaration moved to another source file | Splitting a schema into imported files |
 
 Comments, documentation and the declaration order of messages and enums are ignored. A renamed message is reported as a rename, but because magic bytes include the *name* of embedded message types, messages that embed it also report a changed magic bytes value (breaking).
@@ -155,6 +165,31 @@ struct-frame diff main/messages.sf messages.sf
 struct-frame diff messages.sf messages.sf --write-snapshot baseline.json
 struct-frame diff baseline.json messages.sf --format json
 ```
+
+## Formatting (`fmt`)
+
+```bash
+struct-frame fmt robot.sf               # print the formatted schema
+struct-frame fmt *.sf --in-place        # rewrite the files
+struct-frame fmt *.sf --check           # exit 1 if a file is not formatted (for CI)
+struct-frame fmt robot.sf --types short # spell primitive types u8, i32, f64, ...
+```
+
+`fmt` reprints a schema in canonical form: one declaration per line, two-space indentation, one blank line between top-level declarations, attributes and defaults in a fixed spelling. Every comment is kept where it was, and blank lines inside a block are kept (collapsed to one). `--types long` or `--types short` rewrites the primitive and container type names to one spelling (`uint8`/`u8`, `vector`/`vec`, ...); the default keeps them as written. Formatting never changes the generated code. Exit status: `0` success, `1` (`--check`) a file would change, `2` a file has errors.
+
+## Migrating Old Schemas (`migrate`)
+
+```bash
+pip install 'struct-frame[migrate]'
+struct-frame migrate robot.sf                          # print the converted schema
+struct-frame migrate robot.sf --in-place --recursive   # convert robot.sf and the files it imports
+struct-frame migrate old/*.sf --out-dir new/           # write converted copies elsewhere
+struct-frame migrate *.sf --check                      # exit 1 if a file still uses the old syntax
+```
+
+`migrate` converts schemas written in the earlier proto-style syntax (`option msgid = 1;`, `repeated`, `[size = N]`, field numbers) to the struct-frame language. The result builds exactly the same messages, IDs, field layout, magic bytes, defaults and generated code. Comments that documented a declaration become `///` doc comments; others stay as `//` comments. Constructs struct-frame never supported (`map`, `reserved`, nested messages, the old `service` syntax) are reported as warnings and left as comments. A `.proto` input is written as `.sf`. Files already in the new language are left unchanged. Exit status: `0` success, `1` (`--check`) a file uses the old syntax, `2` a file could not be converted.
+
+Compiling a file in the old syntax fails with an error that points to `struct-frame migrate`. See [Migrating from the old syntax](/basic-usage/message-definitions/#migrating-from-the-old-syntax) for the full mapping.
 
 ## Generated Files
 

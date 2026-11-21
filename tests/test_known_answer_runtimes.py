@@ -112,11 +112,12 @@ def test_rust_runtime_encodes_spec_frames(tmp_path):
     (crate / "Cargo.toml").write_text(
         '[package]\nname = "kat"\nversion = "0.0.0"\nedition = "2021"\n\n'
         '[lib]\nname = "kat"\npath = "src/lib.rs"\n', encoding="utf-8")
-    for name in ("frame_base", "frame_headers", "payload_types", "frame_profiles"):
+    modules = ("frame_base", "frame_headers", "payload_types", "frame_profiles", "system_frames", "sf_system")
+    for name in modules:
         shutil.copy(BOILERPLATE / "rust" / f"{name}.rs", crate / "src" / f"{name}.rs")
     (crate / "src" / "lib.rs").write_text(
-        "#![allow(dead_code, unused_imports)]\npub mod frame_base;\npub mod frame_headers;\n"
-        "pub mod payload_types;\npub mod frame_profiles;\n", encoding="utf-8")
+        "#![allow(dead_code, unused_imports, non_camel_case_types)]\n"
+        + "".join(f"pub mod {name};\n" for name in modules), encoding="utf-8")
     (crate / "src" / "main.rs").write_text(_rust_main(), encoding="utf-8")
     run = subprocess.run([cargo, "run", "--quiet", "--manifest-path", str(crate / "Cargo.toml")],
                          capture_output=True, text=True, timeout=1200,
@@ -176,7 +177,7 @@ def test_csharp_runtime_encodes_spec_frames(tmp_path):
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="{fw}/Types/**/*.cs;{fw}/Framing/**/*.cs;{fw}/Profiles/**/*.cs" />
+    <Compile Include="{fw}/Types/**/*.cs;{fw}/Framing/**/*.cs;{fw}/Profiles/**/*.cs;{fw}/SfSystem/**/*.cs" />
   </ItemGroup>
 </Project>
 """, encoding="utf-8")

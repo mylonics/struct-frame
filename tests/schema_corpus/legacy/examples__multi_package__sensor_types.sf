@@ -1,0 +1,19 @@
+// Sensor-specific type definitions. Two files can contribute to one package:
+// sensor_messages.sf below declares the same package and pkgid.
+package sensors;
+
+option pkgid = 2;
+
+enum SensorType {
+  TEMPERATURE = 0;
+  HUMIDITY = 1;
+  PRESSURE = 2;
+  LIGHT = 3;
+}
+
+enum SensorStatus {
+  OFFLINE = 0;
+  ONLINE = 1;
+  CALIBRATING = 2;
+  ERROR = 3;
+}

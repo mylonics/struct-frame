@@ -38,6 +38,6 @@ Depending on which languages you plan to use:
 - **C**: GCC or compatible C compiler
 - **C++**: G++ with C++20 support or later
 - **TypeScript/JavaScript**: Node.js and npm
-- **Python**: Python 3.9 or later (already required for code generation) and `proto-schema-parser` 2.0.0 or later (older versions silently mis-attribute same-line trailing comments)
+- **Python**: Python 3.9 or later (already required for code generation). Converting old proto-style schemas with `struct-frame migrate` also needs `pip install 'struct-frame[migrate]'`
 - **C#**: .NET SDK
 - **GraphQL**: Any GraphQL server implementation

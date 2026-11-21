@@ -65,6 +65,15 @@ static void fuzz_one_profile(const profile_config_t* cfg,
         frame_msg_info_t msg;
         if (!accumulating_reader_try_next(&reader, &msg)) break;
     }
+
+    /* Stream mode (its own state machine, including the system-frame header check),
+     * with system frames delivered. */
+    accumulating_reader_t stream;
+    accumulating_reader_init(&stream, cfg, internal, sizeof(internal), fuzz_get_message_info);
+    accumulating_reader_set_deliver_system_frames(&stream, true);
+    for (size_t i = 0; i < size; i++) {
+        (void)accumulating_reader_push_byte(&stream, data[i]);
+    }
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {

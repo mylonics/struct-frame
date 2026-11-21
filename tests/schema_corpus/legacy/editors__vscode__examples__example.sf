@@ -1,0 +1,66 @@
+// Example struct-frame file demonstrating syntax
+
+package sensor_data;
+
+option pkgid = 1;
+
+/* Enum for sensor status */
+enum SensorStatus {
+  OFFLINE = 0;
+  ONLINE = 1;
+  ERROR = 2;
+}
+
+message SensorReading {
+  option msgid = 1;
+  option variable = true;
+
+  SensorStatus status = 1 [default = ONLINE];
+  float value = 2 [default = 0.0];
+  string name = 3 [size=16, default = "unknown"];
+  repeated uint8 data = 4 [max_size=200];
+  uint32 timestamp = 5;
+}
+
+message Container {
+  option msgid = 2;
+  option variable = true;
+  SensorReading reading = 1;
+
+  oneof payload {
+    option variable = true;
+    SensorReading sensor = 1;
+    DeviceStatus device = 2;
+  }
+}
+
+// Wire-evolution example: v2 adds extension fields without breaking v1 receivers
+message DeviceStatus {
+  option msgid = 3;
+  option magic_bytes = "0xA3, 0x7F";  // Override CRC seed for schema compatibility
+
+  // Base fields (always on the wire)
+  uint8  device_id   = 1;
+  uint8  status_code = 2;
+  uint16 error_flags = 3;
+
+  // Extension fields: present in v2+ firmware; older receivers zero-fill on reception
+  option extensions_start = 4;
+  uint32 uptime_seconds = 4;
+  float  cpu_temp       = 5;
+}
+
+// Oneof-level extensions example
+message JobMessage {
+  option msgid = 4;
+
+  bool run_immediately = 1;
+
+  oneof job {
+    option discriminator = "field_order";
+    SensorReading sensor_job = 1;
+    // Extension variants: older receivers see an unknown discriminator and skip
+    option extensions_start = 2;
+    DeviceStatus device_job = 2;
+  }
+}

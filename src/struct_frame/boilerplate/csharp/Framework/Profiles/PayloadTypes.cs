@@ -25,7 +25,9 @@ namespace StructFrame.Profiles
         /// <summary>Payload with sequence, system, and component IDs.</summary>
         MultiSystemStream = 7,            // [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
         /// <summary>Extended payload with sequence, system, and component IDs.</summary>
-        ExtendedMultiSystemStream = 8     // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+        ExtendedMultiSystemStream = 8,    // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+        /// <summary>System frames: struct-frame's own messages (see <see cref="StructFrame.Framing.SystemFrames"/>).</summary>
+        System = 9                        // [SEQ] [SYS_ID] [COMP_ID] [LEN16] [SYS_MSG_ID] [PACKET] [CRC1] [CRC2]
     }
 
     /// <summary>
@@ -211,6 +213,17 @@ namespace StructFrame.Profiles
             true,       // has sys_id
             true,       // has comp_id
             true        // has pkg_id
+        );
+
+        /// <summary>System frames: struct-frame's own messages, after a Basic or Tiny header.</summary>
+        public static readonly PayloadConfig System = new PayloadConfig(
+            PayloadType.System,
+            true, 2,    // has CRC, 2 bytes
+            true, 2,    // has length, 2 bytes
+            true,       // has seq
+            true,       // has sys_id
+            true,       // has comp_id
+            false       // no pkg_id
         );
     }
 }

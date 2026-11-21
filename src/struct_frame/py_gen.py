@@ -9,6 +9,8 @@ module for binary packing/unpacking with dataclass-style message definitions.
 
 from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 from struct_frame.base import format_file_docs
+from struct_frame import literals as _lit
+import struct
 import time
 
 _style_c = NamingStyleC()
@@ -183,7 +185,60 @@ class FieldPyGen():
         return result
 
 
+def _py_element_expr(field, value):
+    """Python expression for one element of *field* holding canonical *value*."""
+    if field.is_enum:
+        return str(field.type_ref.data[value][0])
+    if field.field_type in ("string", "bytes"):
+        data = value if isinstance(value, (bytes, bytearray)) else value.encode("utf-8")
+        return repr(bytes(data))
+    if field.field_type == "float":
+        if _lit.is_nonfinite(value):
+            return _lit.py_scalar("float", value)
+        return _lit.py_scalar("float", struct.unpack("<f", struct.pack("<f", value))[0])
+    if field.is_default_type:
+        return _lit.py_scalar(field.field_type, value)
+    args = ", ".join(f"{name}={_py_default_expr(field.type_ref.fields[name], v)}" for name, v in value.items())
+    return f"{field.field_type}({args})"
+
+
+def _py_default_expr(field, value):
+    """Python expression that builds *field*'s canonical default *value* (fresh objects)."""
+    if field.is_array:
+        return "[" + ", ".join(_py_element_expr(field, v) for v in value) + "]"
+    return _py_element_expr(field, value)
+
+
 class MessagePyGen():
+    @staticmethod
+    def generate_default_helpers(msg):
+        """defaults() / reset() / is_default(field) -- defaults compared by encoding."""
+        names = ", ".join(repr(name) for name in msg.fields)
+        trailing = "," if len(msg.fields) == 1 else ""
+        r = '\n'
+        r += f'    _FIELD_NAMES = ({names}{trailing})\n\n'
+        r += '    @classmethod\n'
+        r += f'    def defaults(cls) -> "{msg.name}":\n'
+        r += '        """A new message with every field at its schema default."""\n'
+        r += '        return cls()\n\n'
+        r += '    def reset(self) -> None:\n'
+        r += '        """Set every field back to its schema default."""\n'
+        r += '        fresh = type(self)()\n'
+        r += '        self.__dict__.clear()\n'
+        r += '        self.__dict__.update(fresh.__dict__)\n\n'
+        r += '    def is_default(self, field: str = None) -> bool:\n'
+        r += '        """True when the message (or the named field) encodes exactly like the\n'
+        r += '        schema default."""\n'
+        r += '        fresh = type(self)()\n'
+        r += '        if field is None:\n'
+        r += '            return self.serialize() == fresh.serialize()\n'
+        r += '        if field not in self._FIELD_NAMES:\n'
+        r += '            raise KeyError(f"{type(self).__name__} has no field {field!r}")\n'
+        r += '        probe = type(self)()\n'
+        r += '        setattr(probe, field, getattr(self, field))\n'
+        r += '        return probe.serialize() == fresh.serialize()\n'
+        return r
+
     @staticmethod
     def get_struct_format(field):
         """Get struct format string for a field"""
@@ -746,39 +801,41 @@ class MessagePyGen():
         result += '):\n'
         
         for key, f in msg.fields.items():
-            # Initialize with defaults
+            # Initialize with defaults (the fallback expressions build fresh lists and
+            # structs on every call, so instances never share them).
             if f.is_array:
+                fallback = _py_default_expr(f, f.default) if f.default is not None else '[]'
                 # For float32 arrays, truncate each element to 32-bit precision
                 if f.field_type == "float":
-                    result += f'        self.{f.name} = [_truncate_float32(v) for v in {f.name}] if {f.name} is not None else []\n'
+                    result += f'        self.{f.name} = [_truncate_float32(v) for v in {f.name}] if {f.name} is not None else {fallback}\n'
                 elif f.field_type in ("string", "bytes"):
-                    result += f'        self.{f.name} = [_to_bytes(v) for v in {f.name}] if {f.name} is not None else []\n'
+                    result += f'        self.{f.name} = [_to_bytes(v) for v in {f.name}] if {f.name} is not None else {fallback}\n'
                 else:
-                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
+                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
             elif f.field_type in ("string", "bytes"):
-                fallback = repr(f.default.encode('utf-8')) if f.default is not None else 'b""'
+                fallback = _py_default_expr(f, f.default) if f.default is not None else 'b""'
                 result += f'        self.{f.name} = _to_bytes({f.name}) if {f.name} is not None else {fallback}\n'
             elif f.field_type in py_type_hints:
                 if f.field_type == "bool":
-                    fallback = repr(f.default) if f.default is not None else 'False'
+                    fallback = _py_default_expr(f, f.default) if f.default is not None else 'False'
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
                 elif f.field_type == "float":
                     # Truncate float32 to 32-bit precision
-                    fallback = repr(f.default) if f.default is not None else '0.0'
-                    result += f'        self.{f.name} = _truncate_float32({f.name}) if {f.name} is not None else _truncate_float32({fallback})\n'
+                    fallback = _py_default_expr(f, f.default) if f.default is not None else '0.0'
+                    result += f'        self.{f.name} = _truncate_float32({f.name}) if {f.name} is not None else {fallback}\n'
                 elif f.field_type == "double":
-                    fallback = repr(f.default) if f.default is not None else '0.0'
+                    fallback = _py_default_expr(f, f.default) if f.default is not None else '0.0'
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
                 else:
-                    fallback = repr(f.default) if f.default is not None else '0'
+                    fallback = _py_default_expr(f, f.default) if f.default is not None else '0'
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
             elif f.is_enum:
-                fallback = repr(f.default_numeric) if f.default is not None else '0'
+                fallback = _py_default_expr(f, f.default) if f.default is not None else '0'
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
             else:
                 # Nested message
-                type_name = f.field_type
-                result += f'        self.{f.name} = {f.name} if {f.name} is not None else {type_name}()\n'
+                fallback = _py_default_expr(f, f.default) if f.default is not None else f'{f.field_type}()'
+                result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
 
         # Initialize oneofs
         for oneof_name, oneof in msg.oneofs.items():
@@ -786,6 +843,8 @@ class MessagePyGen():
             result += f'        self.{oneof_name}_which = {oneof_name}_which\n'
             if oneof.auto_discriminator:
                 result += f'        self.{oneof_name}_discriminator = {oneof_name}_discriminator\n'
+
+        result += MessagePyGen.generate_default_helpers(msg)
 
         # Generate pack method
         result += MessagePyGen.generate_pack_method(msg)
@@ -1530,6 +1589,15 @@ class FilePyGen():
         if package.package_id is not None:
             yield f'# Package ID for extended message IDs\n'
             yield f'PACKAGE_ID = {package.package_id}\n\n'
+
+        consts = _lit.package_consts(package)
+        if consts:
+            yield '# Constants\n'
+            for const in consts:
+                for line in _lit.doc_lines(const.comments):
+                    yield f'# {line}'.rstrip() + '\n'
+                yield f'{_lit.const_name(const)} = {_lit.py_scalar(const.const_type, const.value)}\n'
+            yield '\n'
 
         if package.enums:
             yield '# Enum definitions\n'

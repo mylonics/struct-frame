@@ -1,0 +1,508 @@
+{
+ "ir": {
+  "documentation_hash": "bc25d2fd327d5157ea000eb84e5cf55e4697a1056cc1cd52b208d8edb086ea06",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "TestEnum": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "VALUE_A": [
+        0,
+        []
+       ],
+       "VALUE_B": [
+        1,
+        []
+       ],
+       "VALUE_C": [
+        2,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "VALUE_A": [],
+       "VALUE_B": [],
+       "VALUE_C": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "TestEnum",
+      "package": "array_test",
+      "size": 1,
+      "source_file": "array_test.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {},
+    "messages": {
+     "ArrayTestMessage": {
+      "_class": "Message",
+      "base_size": 1372,
+      "comments": [],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "description": {
+        "_class": "Field",
+        "comments": [
+         "// Variable string (up to max length)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Variable string (up to max length)"
+        ],
+        "max_size": 255,
+        "name": "description",
+        "number": 2,
+        "package": "array_test",
+        "size": 256,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "enum_values": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 5 enums"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "TestEnum",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 5,
+        "name": "enum_values",
+        "number": 8,
+        "package": "array_test",
+        "size": 6,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// Up to 5 enums"
+        ],
+        "type_message": null,
+        "type_package": "array_test",
+        "type_ref": {
+         "message": null,
+         "name": "TestEnum",
+         "package": "array_test",
+         "ref": "enum"
+        }
+       },
+       "joint_names": {
+        "_class": "Field",
+        "comments": [
+         "// Bounded arrays (variable count up to max - includes count byte)",
+         "// Up to 10 names, each 32 chars max"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": 32,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Bounded arrays (variable count up to max - includes count byte)"
+        ],
+        "max_size": 10,
+        "name": "joint_names",
+        "number": 6,
+        "package": "array_test",
+        "size": 321,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// Up to 10 names, each 32 chars max"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "joint_positions": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed arrays (always exact size - no count byte needed)",
+         "// Always 6 joints"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed arrays (always exact size - no count byte needed)"
+        ],
+        "max_size": null,
+        "name": "joint_positions",
+        "number": 3,
+        "package": "array_test",
+        "size": 24,
+        "size_option": 6,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// Always 6 joints"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "measurements": {
+        "_class": "Field",
+        "comments": [
+         "// Up to 100 readings"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int32",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 100,
+        "name": "measurements",
+        "number": 7,
+        "package": "array_test",
+        "size": 401,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// Up to 100 readings"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "messages": {
+        "_class": "Field",
+        "comments": [
+         "// Nested message arrays",
+         "// Up to 5 submessages"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "SubMessage",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Nested message arrays"
+        ],
+        "max_size": 5,
+        "name": "messages",
+        "number": 9,
+        "package": "array_test",
+        "size": 276,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// Up to 5 submessages"
+        ],
+        "type_message": null,
+        "type_package": "array_test",
+        "type_ref": {
+         "message": null,
+         "name": "SubMessage",
+         "package": "array_test",
+         "ref": "message"
+        }
+       },
+       "robot_id": {
+        "_class": "Field",
+        "comments": [
+         "// Fixed string (exact length)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Fixed string (exact length)"
+        ],
+        "max_size": null,
+        "name": "robot_id",
+        "number": 1,
+        "package": "array_test",
+        "size": 16,
+        "size_option": 16,
+        "source_file": "array_test.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sensor_states": {
+        "_class": "Field",
+        "comments": [
+         "// Always 8 sensors"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sensor_states",
+        "number": 4,
+        "package": "array_test",
+        "size": 8,
+        "size_option": 8,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// Always 8 sensors"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "transformation": {
+        "_class": "Field",
+        "comments": [
+         "// 4x4 matrix"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": true,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "transformation",
+        "number": 5,
+        "package": "array_test",
+        "size": 64,
+        "size_option": 16,
+        "source_file": "array_test.sf",
+        "trailing_comments": [
+         "// 4x4 matrix"
+        ],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 100,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       106,
+       70
+      ],
+      "magic_bytes_override": null,
+      "min_size": 1372,
+      "name": "ArrayTestMessage",
+      "oneofs": {},
+      "package": "array_test",
+      "size": 1372,
+      "source_file": "array_test.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "SubMessage": {
+      "_class": "Message",
+      "base_size": 55,
+      "comments": [],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "id",
+        "number": 1,
+        "package": "array_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "name": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 50,
+        "name": "name",
+        "number": 2,
+        "package": "array_test",
+        "size": 51,
+        "size_option": null,
+        "source_file": "array_test.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       21,
+       28
+      ],
+      "magic_bytes_override": null,
+      "min_size": 55,
+      "name": "SubMessage",
+      "oneofs": {},
+      "package": "array_test",
+      "size": 55,
+      "source_file": "array_test.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "array_test",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "a74857c2dda50995f923aad6a5baa3d23e1d84e0fb14c095498335bad0730b21"
+ },
+ "outputs": {
+  "c/array_test.structframe.h": "33b1e97047b08bda581246a59985d041fb6f315d2f9c75b58f67280c946312d8",
+  "c/array_test.tests.h": "a71a97573158a7eff9cd9bde1e5e808cb165cc599d0d561127a9a7459c18c2f1",
+  "c/structframe_all.h": "c93aa24940fd19ba2b6e81909211481dfb0a8e0246b732f0da34e307d7f749f4",
+  "c/test_roundtrip_array_test.c": "3abcdcfefbad29e62869ece4550c40bdcabbf859ddd7b3366ec394eeecbea22a",
+  "cpp/array_test.structframe.hpp": "d92adf2ce16e87b9b62abbafeb657d33976ccffc47323e22f8679de185bdd235",
+  "cpp/array_test.tests.hpp": "2cd52500419069803b7be727907820296e6b01121d7b1fefea16fec1f6180a1f",
+  "cpp/structframe_all.hpp": "1843315317d266533fc7db9c6d08a2de5848e61c52bf1c7440e8f1809ca2667a",
+  "cpp/test_roundtrip_array_test.cpp": "777ab7f1a420154ead35ca4a06de27f62fb8f612667e826cb4945d928a312f92",
+  "csharp/ArrayTest/Constants.cs": "9f03e7d1a1ea97122048d4f00434b6b3ef4220ddfa3244c54bba64c26dd87658",
+  "csharp/ArrayTest/Enums/TestEnum.cs": "26379b280c0028b6b9db8d2db20646615bd92e1ee7e449b0c555da6017916d1a",
+  "csharp/ArrayTest/MessageDefinitions.cs": "7cfb3cf35ca80b56f0b2b5faabc826525a088ade139ba35be83dd41b23fe388a",
+  "csharp/ArrayTest/Messages/ArrayTestMessage.cs": "5b9ba7fc262138efdf966e5130c9cc0e24f6dbbc5ded97880183f80cbb91db2e",
+  "csharp/ArrayTest/Messages/SubMessage.cs": "5f2d8162a3caed9fa63e2f753e99a07e99906bded777057616ac021bbe024607",
+  "csharp/ArrayTest/SdkInterface.cs": "3608c6cd2fe04eae5d226bf9b066389312e283f95126739cd8011b3cf2b4f31e",
+  "csharp/ArrayTest/test_roundtrip_array_test.cs": "e34842b7c3333e018774d7f5a4385dd58f0197d0e0ea14cf36eacbf1be0f680a",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/array_test.graphql": "5c82bb5a6220de941fd190fd2359ae167b508f2ecbe53f5d0f5b0657448247f0",
+  "gql/schema.graphql": "6615ee832c6e33a16f819fdd106c9a1557838c1d93e52d2944439bf3b19fb7c9",
+  "js/array-test.structframe.js": "0f5fa42fb6e3f55583fe7aa3eedcc400d2e7d690f11dcea7de04642a41f885a3",
+  "js/test_roundtrip_array_test.js": "7bc9c7198f071526493e74982a5f8cabd6cf418ae0f2a4bf770579a6284692e5",
+  "py/structframe/array_test.py": "6e447bacf80c7c90e52a2f542f68a3ff8cdfe0709516740dd270467d9af3c0f8",
+  "py/structframe/array_test_tests.py": "d085703fc31253784d55b81640c2e9052ec337d5f69fcd32a127eecda705afc7",
+  "py/test_roundtrip_array_test.py": "9c1d38a22300ac96d88083959d8f13b649419188a68512aab90f5410ba99ac8f",
+  "rust/Cargo.toml": "09baa78113d5875e56f84ceb601fcb1e92178e2fd0f92460e631b963e0b9857c",
+  "rust/array_test.structframe.rs": "d67133446790791804d85eb2eab7c462bd29ecb2f59adb0e7eb822924768ccff",
+  "rust/test_roundtrip_array_test.rs": "d3de347641597e747bea0432e7ddbee4ca7753b4e2912645e1b66b68db52ca5e",
+  "sf_compile.json": "d9619b47b8f54e86fb8f376a8f587a2e6e9dcc975dd8afa61898f02283e8c13b",
+  "ts/array-test.structframe.ts": "75f3d43bd853b4ed7d41bc5501e9b02e4d2763a151b04d59798fe66acf074409",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_array_test.ts": "775e1dbc09b139a23b3839894f1a16a3bbdc395736dae2edf65619f6b214d47b"
+ },
+ "outputs_no_packed": {
+  "c/array_test.structframe.h": "561cb378a41c3513aea1dd11f6aad796b13e83b122002c18a0262df3a8f17613",
+  "c/array_test.tests.h": "a71a97573158a7eff9cd9bde1e5e808cb165cc599d0d561127a9a7459c18c2f1",
+  "c/structframe_all.h": "c93aa24940fd19ba2b6e81909211481dfb0a8e0246b732f0da34e307d7f749f4",
+  "c/test_roundtrip_array_test.c": "3abcdcfefbad29e62869ece4550c40bdcabbf859ddd7b3366ec394eeecbea22a",
+  "cpp/array_test.structframe.hpp": "58d4416b5e08c27a56dc3769299c895b0c9af132ff7bfaae264609ea1a302cf3",
+  "cpp/array_test.tests.hpp": "2cd52500419069803b7be727907820296e6b01121d7b1fefea16fec1f6180a1f",
+  "cpp/structframe_all.hpp": "1843315317d266533fc7db9c6d08a2de5848e61c52bf1c7440e8f1809ca2667a",
+  "cpp/test_roundtrip_array_test.cpp": "777ab7f1a420154ead35ca4a06de27f62fb8f612667e826cb4945d928a312f92",
+  "csharp/ArrayTest/Constants.cs": "6b5182f181696b0d114d2b8d63d3d39881683dbf9dc636909b022d53d2b38e69",
+  "csharp/ArrayTest/Enums/TestEnum.cs": "26379b280c0028b6b9db8d2db20646615bd92e1ee7e449b0c555da6017916d1a",
+  "csharp/ArrayTest/MessageDefinitions.cs": "6a9874c383e9cf246c2235a04f8d5266bbec213e40515363bb4010499918add6",
+  "csharp/ArrayTest/Messages/ArrayTestMessage.cs": "fe093873c6085d717709373ac2c6ae32e47c24111dae036d6d83022870b91f19",
+  "csharp/ArrayTest/Messages/SubMessage.cs": "c03ff7f3704b28834f187efb5d98d2f10f0db8929db781f4c4491dc2e3a44312",
+  "csharp/ArrayTest/SdkInterface.cs": "3608c6cd2fe04eae5d226bf9b066389312e283f95126739cd8011b3cf2b4f31e",
+  "csharp/ArrayTest/test_roundtrip_array_test.cs": "e34842b7c3333e018774d7f5a4385dd58f0197d0e0ea14cf36eacbf1be0f680a",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/array_test.graphql": "5c82bb5a6220de941fd190fd2359ae167b508f2ecbe53f5d0f5b0657448247f0",
+  "gql/schema.graphql": "6615ee832c6e33a16f819fdd106c9a1557838c1d93e52d2944439bf3b19fb7c9",
+  "js/array-test.structframe.js": "c3e66f4a7931e0ce8b9a0097c859246616b753737fa7281ae66db163934514b3",
+  "js/test_roundtrip_array_test.js": "7bc9c7198f071526493e74982a5f8cabd6cf418ae0f2a4bf770579a6284692e5",
+  "py/structframe/array_test.py": "81a58289b51594472e550be561e08c541406e6b5caacf63cd9737276a2ca204f",
+  "py/structframe/array_test_tests.py": "d085703fc31253784d55b81640c2e9052ec337d5f69fcd32a127eecda705afc7",
+  "py/test_roundtrip_array_test.py": "9c1d38a22300ac96d88083959d8f13b649419188a68512aab90f5410ba99ac8f",
+  "rust/Cargo.toml": "09baa78113d5875e56f84ceb601fcb1e92178e2fd0f92460e631b963e0b9857c",
+  "rust/array_test.structframe.rs": "f0438f37a4989e8041bed52110a4018466459ae9de9591c84e7ce64af29864ea",
+  "rust/test_roundtrip_array_test.rs": "d3de347641597e747bea0432e7ddbee4ca7753b4e2912645e1b66b68db52ca5e",
+  "sf_compile.json": "b6a17162ee1dcbeebe74d4df4284e93a210d27767a063125b648413e2e1149ce",
+  "ts/array-test.structframe.ts": "970194156c84351a51ce57c085852baac3f469cdb43997049b7f784a9bd306ba",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_array_test.ts": "775e1dbc09b139a23b3839894f1a16a3bbdc395736dae2edf65619f6b214d47b"
+ },
+ "schema": "examples/array_test.sf"
+}

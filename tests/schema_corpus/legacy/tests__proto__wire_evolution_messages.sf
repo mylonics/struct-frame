@@ -1,0 +1,147 @@
+// Wire-evolution test messages for struct-frame code generation framework.
+//
+// Tests the extensions_start mechanism for both top-level message fields and
+// for variants inside a oneof block.  Extension fields/variants are excluded
+// from the magic-byte computation (so older parsers still validate the base
+// portion) but are still mixed into the CRC (so corruption is detected).
+//
+// Four scenarios are exercised:
+//  1. BaseExtensionMessage    — top-level extension fields, fixed-size base
+//  2. VariableExtensionMessage — top-level extensions, variable-length base
+//  3. OneOfExtensionMessage   — extension variants inside a single oneof
+//  4. MultiOneOfExtensionMessage — two oneofs, the second has extension variants
+//
+// Syntax notes:
+//  • option extensions_start = N;  — canonical marker (message or oneof scope)
+//    The next field/variant with number >= N is an extension field.
+//
+package wire_evolution;
+
+// ============================================================================
+// Shared sub-message types used inside oneofs
+// ============================================================================
+
+// Used as a base oneof variant (no msgid — discriminator uses field_order)
+message BaseCommandA {
+  uint32 value_a = 1;
+  uint16 flags_a = 2;
+}
+
+// Used as a base oneof variant
+message BaseCommandB {
+  int16  value_b  = 1;
+  bool   active_b = 2;
+}
+
+// Used as an extension oneof variant — older receivers treat it as unknown
+message ExtCommandC {
+  float  value_c = 1;
+  uint8  mode_c  = 2;
+}
+
+// Used as a second extension oneof variant
+message ExtCommandD {
+  double value_d = 1;
+}
+
+// ============================================================================
+// Scenario 1 — standard message with top-level extension fields (fixed base)
+// ============================================================================
+//
+// Base wire format: header(2) + seq(1) = 3 bytes
+// Extension: crc_seed(4) is appended when the sender is extension-aware.
+// Older parsers see a 3-byte payload; magic is derived only from the 2 base
+// fields, so they compute the same magic byte as a v2 sender.
+message BaseExtensionMessage {
+  option msgid = 1;
+
+  // Base fields — always present on the wire
+  uint16 header  = 1;
+  uint8  seq     = 2;
+
+  // Extension fields — senders/receivers that understand extensions include
+  // this; older senders omit it and older receivers zero-fill on reception.
+  option extensions_start = 3;
+  uint32 crc_seed = 3;
+}
+
+// ============================================================================
+// Scenario 2 — variable-length message with top-level extension fields
+// ============================================================================
+//
+// This verifies that extensions play nicely with variable encoding: the base
+// portion is variable (contains a bounded array) while the extension portion
+// is a plain fixed field appended after the base.
+message VariableExtensionMessage {
+  option msgid = 2;
+  option variable = true;
+
+  // Base fields
+  uint8              node_id  = 1;
+  repeated uint16    readings = 2 [max_size=16];
+
+  // Extension field — fixed-size trailer, appended after the variable base
+  option extensions_start = 3;
+  uint32 ext_timestamp = 3;
+}
+
+// ============================================================================
+// Scenario 3 — message with a single oneof that contains extension variants
+// ============================================================================
+//
+// The oneof 'command' has two base variants (field_order 1 and 2) and two
+// extension variants (field_order 3 and 4).  The magic bytes are computed only
+// from base variants; the message base_size is derived from the largest base
+// variant.  An older parser cannot decode an ext variant payload but still
+// validates the CRC (extension bytes are mixed in after the magic).
+message OneOfExtensionMessage {
+  option msgid = 3;
+
+  // Fixed header always present
+  uint8 device_id = 1;
+
+  oneof command {
+    option discriminator = "field_order";
+
+    // Base variants — older parsers understand these
+    BaseCommandA cmd_a = 1;
+    BaseCommandB cmd_b = 2;
+
+    // Extension variants — newer additions; older receivers treat the
+    // discriminator value as unknown and ignore the payload.
+    option extensions_start = 3;
+    ExtCommandC cmd_c = 3;
+    ExtCommandD cmd_d = 4;
+  }
+}
+
+// ============================================================================
+// Scenario 4 — message with two oneofs, only the second has extension variants
+// ============================================================================
+//
+// Verifies that per-oneof base_size is tracked independently, and that the
+// message-level base_size sums correctly.
+message MultiOneOfExtensionMessage {
+  option msgid = 4;
+
+  uint8 priority = 1;
+
+  // First oneof — all base variants, no extensions
+  oneof base_union {
+    option discriminator = "field_order";
+    BaseCommandA first_a = 1;
+    BaseCommandB first_b = 2;
+  }
+
+  // Second oneof — has extension variants
+  oneof ext_union {
+    option discriminator = "field_order";
+
+    // Base variant
+    BaseCommandA second_a = 1;
+
+    // Extension variant — added later; older parsers skip it
+    option extensions_start = 2;
+    ExtCommandC second_ext = 2;
+  }
+}

@@ -57,6 +57,12 @@ namespace StructFrame
         public FrameMsgStatus Status { get; set; }
 
         /// <summary>
+        /// True for a system frame (payload type 9): MsgId is then a system message id
+        /// (see <see cref="StructFrame.Framing.SystemFrames"/>), never an application message id.
+        /// </summary>
+        public bool IsSystem { get; set; }
+
+        /// <summary>
         /// Which payload layout the frame carries: <c>true</c> for the variable-length wire form
         /// (profiles with a length field), <c>false</c> for the fixed MaxSize form (minimal profiles),
         /// <c>null</c> when unknown. Lets Deserialize avoid guessing the layout from the length.
@@ -83,6 +89,7 @@ namespace StructFrame
             CompId = 0;
             PkgId = 0;
             Status = FrameMsgStatus.None;
+            IsSystem = false;
             VariableEncoding = null;
             Diagnostics = null;
         }

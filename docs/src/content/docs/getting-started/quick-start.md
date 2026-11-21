@@ -7,15 +7,14 @@ This guide shows you how to create a simple message, generate code, and use it i
 
 ## 1. Create a Schema File
 
-Create a file called `status.sf` (`.sf` is the usual extension; a `.proto` file with the same content works too):
+Create a file called `status.sf`:
 
-```proto
+```sf
 package example;
 
-message Status {
-  option msgid = 1;
-  uint32 id = 1;
-  float value = 2;
+message Status @1 {
+  uint32 id;
+  float value;
 }
 ```
 
@@ -73,6 +72,6 @@ That's it! The C/C++ implementation uses packed structs that map directly to mem
 
 ## Next Steps
 
-- [Message Definitions](/basic-usage/message-definitions/) - Learn how to write proto files
+- [Message Definitions](/basic-usage/message-definitions/) - Learn the schema language
 - [Language Examples](/basic-usage/language-examples/) - See examples for other languages
 - [Framing](/basic-usage/framing/) - Add framing for reliable communication

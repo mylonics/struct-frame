@@ -18,6 +18,20 @@
 #include "frame_headers.h"
 #include "payload_types.h"
 
+/* System frames (payload type 9, start byte 0x79) carry struct-frame's own messages next to
+ * the application's. Define SF_DISABLE_SYSTEM_FRAMES to compile the reader support out. */
+#ifndef SF_DISABLE_SYSTEM_FRAMES
+#define SF_SYSTEM_FRAMES_ENABLED 1
+#include "sf_system_info.h"
+#else
+#define SF_SYSTEM_FRAMES_ENABLED 0
+static inline bool sf_system_frame_message_info(uint16_t msg_id, message_info_t* info) {
+    (void)msg_id;
+    (void)info;
+    return false;
+}
+#endif
+
 /*===========================================================================
  * Profile Configuration - Composed from Header + Payload configs
  *===========================================================================*/
@@ -44,6 +58,37 @@ static inline uint8_t profile_footer_size(const profile_config_t* config) {
 /* Helper to calculate total overhead */
 static inline uint8_t profile_overhead(const profile_config_t* config) {
     return profile_header_size(config) + profile_footer_size(config);
+}
+
+/* First start byte of a profile (a Tiny header's only byte carries the payload type). */
+static inline uint8_t profile_start_byte1(const profile_config_t* config) {
+    if (config->header.encodes_payload_type && config->header.num_start_bytes == 1) {
+        return get_tiny_start_byte((uint8_t)config->payload.payload_type);
+    }
+    return config->header.start_byte1;
+}
+
+/* Second start byte of a profile (a Basic header's second byte carries the payload type). */
+static inline uint8_t profile_start_byte2(const profile_config_t* config) {
+    if (config->header.encodes_payload_type && config->header.num_start_bytes == 2) {
+        return get_basic_second_start_byte((uint8_t)config->payload.payload_type);
+    }
+    return config->header.start_byte2;
+}
+
+/* True when frames of config can be told apart from system frames: the header carries the
+ * payload type in a start byte (Basic and Tiny headers). */
+static inline bool profile_supports_system_frames(const profile_config_t* config) {
+    return SF_SYSTEM_FRAMES_ENABLED && config->header.encodes_payload_type &&
+           config->header.num_start_bytes >= 1;
+}
+
+/* The system-frame profile for the header of config. */
+static inline profile_config_t profile_system_config(const profile_config_t* config) {
+    profile_config_t sys;
+    sys.header = config->header;
+    sys.payload = PAYLOAD_SYSTEM_CONFIG;
+    return sys;
 }
 
 /*===========================================================================
@@ -126,15 +171,12 @@ static inline size_t profile_encode_with_crc_ext(
     
     size_t idx = 0;
     
-    /* Write start bytes */
+    /* Write start bytes (the payload type is folded in for Tiny/Basic headers) */
     if (config->header.num_start_bytes >= 1) {
-        buffer[idx++] = config->header.start_byte1;
+        buffer[idx++] = profile_start_byte1(config);
     }
     if (config->header.num_start_bytes >= 2) {
-        /* Second start byte encodes payload type */
-        buffer[idx++] = config->header.encodes_payload_type ?
-            get_basic_second_start_byte(config->payload.payload_type) :
-            config->header.start_byte2;
+        buffer[idx++] = profile_start_byte2(config);
     }
     
     size_t crc_start = idx;  /* CRC calculation starts after start bytes */
@@ -280,7 +322,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info_func)(uint16_t, message_info_t*)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
+    frame_msg_info_t result = frame_msg_info_empty();
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
     size_t overhead = header_size + footer_size;
@@ -289,28 +331,23 @@ static inline frame_msg_info_t profile_parse_with_crc(
         return result;
     }
     
-    /* Verify start bytes */
+    /* Verify start bytes (the payload type is folded in for Tiny/Basic headers) */
     size_t idx = 0;
-    if (config->header.num_start_bytes >= 1 && buffer[idx++] != config->header.start_byte1) {
+    if (config->header.num_start_bytes >= 1 && buffer[idx++] != profile_start_byte1(config)) {
         result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
         return result;
     }
-    if (config->header.num_start_bytes >= 2) {
-        uint8_t expected_start2 = config->header.encodes_payload_type ?
-            get_basic_second_start_byte(config->payload.payload_type) :
-            config->header.start_byte2;
-        if (buffer[idx++] != expected_start2) {
-            result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
-            return result;
-        }
+    if (config->header.num_start_bytes >= 2 && buffer[idx++] != profile_start_byte2(config)) {
+        result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
+        return result;
     }
 
     size_t crc_start = idx;
 
-    /* Skip optional fields before length */
-    if (config->payload.has_seq) idx++;
-    if (config->payload.has_sys_id) idx++;
-    if (config->payload.has_comp_id) idx++;
+    /* Optional fields before length */
+    if (config->payload.has_seq) result.sequence = buffer[idx++];
+    if (config->payload.has_sys_id) result.system_id = buffer[idx++];
+    if (config->payload.has_comp_id) result.component_id = buffer[idx++];
 
     /* Read length field */
     size_t msg_len = 0;
@@ -326,6 +363,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
     /* Read message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id) */
     uint16_t msg_id = 0;
     if (config->payload.has_pkg_id) {
+        result.package_id = buffer[idx];
         msg_id = (uint16_t)buffer[idx++] << 8;  /* pkg_id (high byte) */
     }
     msg_id |= buffer[idx++];  /* msg_id (low byte) */
@@ -390,7 +428,7 @@ static inline frame_msg_info_t profile_parse_minimal(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
+    frame_msg_info_t result = frame_msg_info_empty();
     uint8_t header_size = profile_header_size(config);
     
     if (length < header_size) {
@@ -485,6 +523,113 @@ static inline frame_msg_info_t profile_parse(
 }
 
 /*===========================================================================
+ * System frames - encode, and helpers shared by the readers
+ *===========================================================================*/
+
+/* Header size of a system frame for the header of config (where the fixed fields start). */
+static inline size_t profile_system_header_size(const profile_config_t* config) {
+    return (size_t)config->header.num_start_bytes + payload_config_header_size(&PAYLOAD_SYSTEM_CONFIG);
+}
+
+/**
+ * Encode a system frame: system message system_msg_id with its serialized fixed fields and
+ * an optional raw tail (Ping, Pong, LinkTestData, RpcRequest, RpcResponse). fixed and tail
+ * may already sit in buffer (fixed at buffer + profile_system_header_size(config)).
+ * Returns the frame size, or 0 when the profile cannot carry system frames, the message is
+ * unknown, fixed_size is not its fixed size, the tail is too long or the buffer too small.
+ */
+static inline size_t profile_encode_system_frame(
+    const profile_config_t* config,
+    uint8_t* buffer, size_t buffer_size,
+    uint8_t seq, uint8_t sys_id, uint8_t comp_id,
+    uint8_t system_msg_id,
+    const uint8_t* fixed, size_t fixed_size,
+    const uint8_t* tail, size_t tail_size)
+{
+    message_info_t info;
+    if (!profile_supports_system_frames(config) || !sf_system_frame_message_info(system_msg_id, &info)) {
+        return 0;
+    }
+    if (fixed_size != info.min_size || tail_size > info.size - info.min_size) {
+        return 0;
+    }
+    profile_config_t sys = profile_system_config(config);
+    size_t header_size = profile_header_size(&sys);
+    size_t payload_size = fixed_size + tail_size;
+    if (buffer_size < header_size + payload_size + profile_footer_size(&sys)) {
+        return 0;
+    }
+    uint8_t* slot = buffer + header_size;
+    if (fixed_size > 0 && fixed != slot) memmove(slot, fixed, fixed_size);
+    if (tail_size > 0 && tail != slot + fixed_size) memmove(slot + fixed_size, tail, tail_size);
+    return profile_encode_with_crc_ext(&sys, buffer, buffer_size, seq, sys_id, comp_id, 0,
+                                       system_msg_id, slot, payload_size, payload_size,
+                                       info.magic1, info.magic2);
+}
+
+/* The tail of a valid system frame (the bytes after the message's fixed fields). */
+static inline const uint8_t* sf_system_frame_tail(const frame_msg_info_t* frame, size_t* tail_size) {
+    message_info_t info;
+    *tail_size = 0;
+    if (!frame->valid || !frame->is_system || !sf_system_frame_message_info(frame->msg_id, &info) ||
+        frame->msg_len < info.min_size) {
+        return NULL;
+    }
+    *tail_size = frame->msg_len - info.min_size;
+    return frame->msg_data + info.min_size;
+}
+
+/* True when data starts with the start bytes of a system frame of sys. */
+static inline bool _sf_is_system_start(const profile_config_t* sys, bool enabled,
+                                       const uint8_t* data, size_t size) {
+    if (!enabled || size < 1 || data[0] != profile_start_byte1(sys)) return false;
+    if (sys->header.num_start_bytes >= 2) {
+        return size >= 2 && data[1] == profile_start_byte2(sys);
+    }
+    return true;
+}
+
+/* Check the header of a candidate system frame: 1 when the system message id is known and
+ * the length fits it, 0 when not, -1 while the header is incomplete. */
+static inline int _sf_system_header_check(const profile_config_t* sys, const uint8_t* data, size_t size) {
+    size_t hs = profile_header_size(sys);
+    if (size < hs) return -1;
+    size_t off = (size_t)sys->header.num_start_bytes + 3; /* after SEQ, SYS, COMP */
+    size_t length = (size_t)data[off] | ((size_t)data[off + 1] << 8);
+    message_info_t info;
+    if (!sf_system_frame_message_info(data[hs - 1], &info)) return 0;
+    return (length >= info.min_size && length <= info.size) ? 1 : 0;
+}
+
+/* Parse a frame known to start with system start bytes. */
+static inline frame_msg_info_t _sf_parse_system(const profile_config_t* sys, const uint8_t* data, size_t size) {
+    frame_msg_info_t result;
+    if (_sf_system_header_check(sys, data, size) == 0) {
+        memset(&result, 0, sizeof(result));
+        result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
+        result.is_system = true;
+        return result;
+    }
+    result = profile_parse_with_crc(sys, data, size, sf_system_frame_message_info);
+    result.is_system = true;
+    return result;
+}
+
+/* Index of the next byte in buf[begin, end) that can start an application frame (sb1) or a
+ * system frame (sys_sb1, when system frames are enabled), or end when there is none. */
+static inline size_t _sf_find_start(const uint8_t* buf, size_t begin, size_t end,
+                                    uint8_t sb1, bool sys_enabled, uint8_t sys_sb1) {
+    if (begin >= end) return end;
+    const void* p = memchr(buf + begin, (int)sb1, end - begin);
+    size_t nxt = p ? (size_t)((const uint8_t*)p - buf) : end;
+    if (sys_enabled && sys_sb1 != sb1 && nxt > begin) {
+        const void* q = memchr(buf + begin, (int)sys_sb1, nxt - begin);
+        if (q) nxt = (size_t)((const uint8_t*)q - buf);
+    }
+    return nxt;
+}
+
+/*===========================================================================
  * BufferReader - Iterate through multiple frames in a buffer
  *===========================================================================*/
 
@@ -494,6 +639,11 @@ typedef struct buffer_reader {
     size_t size;
     size_t offset;
     bool (*get_message_info)(uint16_t msg_id, message_info_t* info);
+    /* System frames: skipped unless deliver_system_frames (see
+     * buffer_reader_set_deliver_system_frames). */
+    bool system_enabled;
+    bool deliver_system_frames;
+    profile_config_t system_config;
 } buffer_reader_t;
 
 static inline void buffer_reader_init(
@@ -508,11 +658,19 @@ static inline void buffer_reader_init(
     reader->size = size;
     reader->offset = 0;
     reader->get_message_info = get_message_info;
+    reader->system_enabled = profile_supports_system_frames(config);
+    reader->deliver_system_frames = false;
+    reader->system_config = profile_system_config(config);
 }
 
-static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
+/* Return system frames (is_system) from buffer_reader_next() instead of skipping them. */
+static inline void buffer_reader_set_deliver_system_frames(buffer_reader_t* reader, bool deliver) {
+    reader->deliver_system_frames = deliver;
+}
+
+static inline frame_msg_info_t _buffer_reader_next_frame(buffer_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
+    frame_msg_info_t result = frame_msg_info_empty();
 
     if (reader->offset >= reader->size) {
         return result;
@@ -521,7 +679,9 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
     const uint8_t* remaining = reader->buffer + reader->offset;
     size_t remaining_size = reader->size - reader->offset;
 
-    if (reader->config->payload.has_crc || reader->config->payload.has_length) {
+    if (_sf_is_system_start(&reader->system_config, reader->system_enabled, remaining, remaining_size)) {
+        result = _sf_parse_system(&reader->system_config, remaining, remaining_size);
+    } else if (reader->config->payload.has_crc || reader->config->payload.has_length) {
         result = profile_parse_with_crc(reader->config, remaining, remaining_size, reader->get_message_info);
     } else {
         if (reader->get_message_info == NULL) {
@@ -539,21 +699,9 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
          * reporting a SyncRecovery event so try_next() keeps advancing. */
         size_t old_offset = reader->offset;
         if (reader->config->header.num_start_bytes >= 1) {
-            /* Compute the expected start byte for this profile */
-            uint8_t sb1 = reader->config->header.start_byte1;
-            if (reader->config->header.header_type == HEADER_TINY &&
-                reader->config->header.encodes_payload_type) {
-                sb1 = get_tiny_start_byte(reader->config->payload.payload_type);
-            }
-            size_t scan_start = reader->offset + 1;
-            if (scan_start < reader->size) {
-                const void* p = memchr(reader->buffer + scan_start,
-                                       (int)sb1,
-                                       reader->size - scan_start);
-                reader->offset = p ? (size_t)((const uint8_t*)p - reader->buffer) : reader->size;
-            } else {
-                reader->offset = reader->size;
-            }
+            reader->offset = _sf_find_start(reader->buffer, reader->offset + 1, reader->size,
+                                            profile_start_byte1(reader->config), reader->system_enabled,
+                                            profile_start_byte1(&reader->system_config));
         } else {
             /* No start bytes (e.g. IPC profile): advance one byte and retry so a
              * single unknown msg_id doesn't discard the rest of the buffer. */
@@ -565,6 +713,17 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
     /* COLLECTING: leave offset unchanged — frame is incomplete (normal end-of-buffer) */
 
     return result;
+}
+
+/* Parse the next frame. System frames are returned (is_system) only with
+ * buffer_reader_set_deliver_system_frames(reader, true); otherwise they are skipped. */
+static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
+{
+    for (;;) {
+        frame_msg_info_t result = _buffer_reader_next_frame(reader);
+        if (result.valid && result.is_system && !reader->deliver_system_frames) continue;
+        return result;
+    }
 }
 
 static inline void buffer_reader_reset(buffer_reader_t* reader) { reader->offset = 0; }
@@ -727,6 +886,20 @@ typedef struct accumulating_reader {
     frame_parser_diagnostics_t diagnostics;
     uint8_t last_seq;
     bool last_seq_valid;
+
+    /* System frames (payload type 9) share the profile's header; they are counted and
+     * skipped unless deliver_system_frames (accumulating_reader_set_deliver_system_frames).
+     * Their sequence numbers are tracked separately from the application frames'. */
+    bool system_enabled;
+    bool deliver_system_frames;
+    profile_config_t system_config;
+    uint8_t sys_start_byte1;
+    uint8_t sys_start_byte2;
+    uint8_t sys_header_size;
+    uint8_t last_sys_seq;
+    bool last_sys_seq_valid;
+    /* Stream mode: the frame being collected is a system frame. */
+    bool collecting_system;
 } accumulating_reader_t;
 
 static inline void accumulating_reader_init(
@@ -758,10 +931,39 @@ static inline void accumulating_reader_init(
     reader->current_buffer = NULL;
     reader->current_size = 0;
     reader->current_offset = 0;
-    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0, 0};
-    reader->diagnostics = zero_diag;
+    memset(&reader->diagnostics, 0, sizeof(reader->diagnostics));
     reader->last_seq = 0;
     reader->last_seq_valid = false;
+
+    reader->system_enabled = profile_supports_system_frames(config);
+    reader->deliver_system_frames = false;
+    reader->system_config = profile_system_config(config);
+    reader->sys_start_byte1 = profile_start_byte1(&reader->system_config);
+    reader->sys_start_byte2 = profile_start_byte2(&reader->system_config);
+    reader->sys_header_size = profile_header_size(&reader->system_config);
+    reader->last_sys_seq = 0;
+    reader->last_sys_seq_valid = false;
+    reader->collecting_system = false;
+}
+
+/* Return system frames (is_system) from next()/push_byte() instead of only counting them. */
+static inline void accumulating_reader_set_deliver_system_frames(accumulating_reader_t* reader, bool deliver) {
+    reader->deliver_system_frames = deliver;
+}
+
+static inline void _acc_count_system_frame(accumulating_reader_t* reader, const frame_msg_info_t* frame) {
+    reader->diagnostics.cnt_system_frames++;
+    if (reader->last_sys_seq_valid && frame->sequence != (uint8_t)(reader->last_sys_seq + 1)) {
+        reader->diagnostics.cnt_seq_gaps++;
+    }
+    reader->last_sys_seq = frame->sequence;
+    reader->last_sys_seq_valid = true;
+}
+
+static inline size_t _acc_find_start(const accumulating_reader_t* reader, const uint8_t* buf,
+                                     size_t begin, size_t end) {
+    return _sf_find_start(buf, begin, end, profile_start_byte1(reader->config),
+                          reader->system_enabled, reader->sys_start_byte1);
 }
 
 static inline void accumulating_reader_add_data(
@@ -798,6 +1000,10 @@ static inline frame_msg_info_t _acc_parse_buffer(
 static inline void _acc_record_frame_diagnostics(
     accumulating_reader_t* reader, const uint8_t* frame_start, bool valid)
 {
+    if (_sf_is_system_start(&reader->system_config, reader->system_enabled, frame_start,
+                            reader->system_config.header.num_start_bytes)) {
+        return; /* counted by _acc_count_system_frame; the header was already validated */
+    }
     const profile_config_t* config = reader->config;
     if (config->payload.has_length && reader->get_message_info) {
         size_t len_offset = config->header.num_start_bytes;
@@ -840,7 +1046,9 @@ static inline void _acc_record_frame_diagnostics(
 static inline bool _acc_claims_oversize_frame(
     const accumulating_reader_t* reader, const uint8_t* data, size_t size)
 {
-    const profile_config_t* config = reader->config;
+    const profile_config_t* config =
+        _sf_is_system_start(&reader->system_config, reader->system_enabled, data, size)
+            ? &reader->system_config : reader->config;
     if (!config->payload.has_length || size < profile_header_size(config)) return false;
     size_t off = config->header.num_start_bytes;
     if (config->payload.has_seq) off++;
@@ -852,20 +1060,13 @@ static inline bool _acc_claims_oversize_frame(
     return profile_overhead(config) + payload_len > reader->buffer_size;
 }
 
-static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
+static inline frame_msg_info_t _acc_next_frame(accumulating_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
+    frame_msg_info_t result = frame_msg_info_empty();
     result.diagnostics = &reader->diagnostics;
 
     if (reader->state != ACC_STATE_BUFFER_MODE) {
         return result;
-    }
-
-    /* Compute start byte 1 (needed for memchr resync scan) */
-    uint8_t sb1 = reader->config->header.start_byte1;
-    if (reader->config->header.header_type == HEADER_TINY &&
-        reader->config->header.encodes_payload_type) {
-        sb1 = get_tiny_start_byte(reader->config->payload.payload_type);
     }
 
     /* First, try to complete a partial message from the internal buffer.
@@ -921,12 +1122,11 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
             reader->internal_data_len >= reader->buffer_size ||
             _acc_claims_oversize_frame(reader, reader->internal_buffer, reader->internal_data_len)) {
             size_t discard = reader->internal_data_len;
+            if (result.is_system && result.status == FRAME_MSG_STATUS_WAITING_FOR_START) {
+                reader->diagnostics.cnt_system_rejected++;
+            }
             if (reader->config->header.num_start_bytes >= 1) {
-                if (reader->internal_data_len > 1) {
-                    const void* p = memchr(reader->internal_buffer + 1, (int)sb1,
-                                           reader->internal_data_len - 1);
-                    if (p) discard = (size_t)((const uint8_t*)p - reader->internal_buffer);
-                }
+                discard = _acc_find_start(reader, reader->internal_buffer, 1, reader->internal_data_len);
             } else {
                 /* No start bytes (e.g. IPC): advance one byte and retry. */
                 discard = 1;
@@ -982,18 +1182,12 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
         /* Head byte is not a start byte — scan forward, reporting a SyncRecovery event
          * so accumulating_reader_try_next() keeps draining past garbage bytes. */
         size_t old_current_offset = reader->current_offset;
+        if (result.is_system) {
+            reader->diagnostics.cnt_system_rejected++;
+        }
         if (reader->config->header.num_start_bytes >= 1) {
-            size_t scan_start = reader->current_offset + 1;
-            if (scan_start < reader->current_size) {
-                const void* p = memchr(reader->current_buffer + scan_start,
-                                       (int)sb1,
-                                       reader->current_size - scan_start);
-                reader->current_offset = p
-                    ? (size_t)((const uint8_t*)p - reader->current_buffer)
-                    : reader->current_size;
-            } else {
-                reader->current_offset = reader->current_size;
-            }
+            reader->current_offset = _acc_find_start(reader, reader->current_buffer,
+                                                     reader->current_offset + 1, reader->current_size);
         } else {
             /* No start bytes (e.g. IPC profile): advance one byte and retry so a
              * single unknown msg_id doesn't discard the rest of the buffer. */
@@ -1011,13 +1205,8 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
     if (reader->config->header.num_start_bytes >= 1 &&
         _acc_claims_oversize_frame(reader, cur, cur_remaining)) {
         size_t old_current_offset = reader->current_offset;
-        size_t scan_start = reader->current_offset + 1;
-        reader->current_offset = reader->current_size;
-        if (scan_start < reader->current_size) {
-            const void* p = memchr(reader->current_buffer + scan_start, (int)sb1,
-                                   reader->current_size - scan_start);
-            if (p) reader->current_offset = (size_t)((const uint8_t*)p - reader->current_buffer);
-        }
+        reader->current_offset = _acc_find_start(reader, reader->current_buffer,
+                                                 reader->current_offset + 1, reader->current_size);
         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
         result.frame_size = reader->current_offset - old_current_offset;
         reader->diagnostics.cnt_sync_recoveries++;
@@ -1042,14 +1231,31 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
     return result;
 }
 
-static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader_t* reader, uint8_t byte)
+/* Parse the next frame (buffer mode). System frames are returned (is_system) only with
+ * accumulating_reader_set_deliver_system_frames(reader, true); otherwise they are counted
+ * (cnt_system_frames) and skipped. */
+static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
+    for (;;) {
+        frame_msg_info_t result = _acc_next_frame(reader);
+        if (result.valid && result.is_system) {
+            _acc_count_system_frame(reader, &result);
+            if (!reader->deliver_system_frames) continue;
+        }
+        return result;
+    }
+}
+
+static inline frame_msg_info_t _acc_push_byte(accumulating_reader_t* reader, uint8_t byte)
+{
+    frame_msg_info_t result = frame_msg_info_empty();
     result.diagnostics = &reader->diagnostics;
 
     /* Use the constants precomputed at init instead of re-deriving them on
-     * every pushed byte. */
-    uint8_t header_size = reader->cached_header_size;
+     * every pushed byte. cfg/header_size describe the frame being collected
+     * (application or system); they are only used once a start byte chose it. */
+    const profile_config_t* cfg = reader->collecting_system ? &reader->system_config : reader->config;
+    uint8_t header_size = reader->collecting_system ? reader->sys_header_size : reader->cached_header_size;
     uint8_t start_byte1 = reader->cached_start_byte1;
     uint8_t start_byte2 = reader->cached_start_byte2;
 
@@ -1113,10 +1319,14 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                     reader->state = ACC_STATE_COLLECTING_HEADER;
                 }
             } else {
-                if (byte == start_byte1) {
+                bool is_user = byte == start_byte1;
+                if (is_user || (reader->system_enabled && byte == reader->sys_start_byte1)) {
                     reader->internal_buffer[0] = byte;
                     reader->internal_data_len = 1;
-                    
+                    /* A Basic header shares its first byte with system frames: the second
+                     * byte decides. A Tiny header's only byte decides now. */
+                    reader->collecting_system = !is_user;
+
                     if (reader->config->header.num_start_bytes == 1) {
                         reader->state = ACC_STATE_COLLECTING_HEADER;
                     } else {
@@ -1127,8 +1337,9 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             break;
             
         case ACC_STATE_LOOKING_FOR_START2:
-            if (byte == start_byte2) {
+            if (byte == start_byte2 || (reader->system_enabled && byte == reader->sys_start_byte2)) {
                 reader->internal_buffer[reader->internal_data_len++] = byte;
+                reader->collecting_system = byte != start_byte2;
                 reader->state = ACC_STATE_COLLECTING_HEADER;
             } else if (byte == start_byte1) {
                 reader->internal_buffer[0] = byte;
@@ -1154,9 +1365,21 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             }
             
             reader->internal_buffer[reader->internal_data_len++] = byte;
-            
+
             if (reader->internal_data_len >= header_size) {
-                if (!reader->config->payload.has_length && !reader->config->payload.has_crc) {
+                if (reader->collecting_system &&
+                    _sf_system_header_check(cfg, reader->internal_buffer, reader->internal_data_len) != 1) {
+                    /* Not a system frame after all: resync without collecting a payload. */
+                    reader->diagnostics.cnt_system_rejected++;
+                    reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                    reader->diagnostics.cnt_sync_recoveries++;
+                    reader->state = ACC_STATE_LOOKING_FOR_START1;
+                    reader->internal_data_len = 0;
+                    reader->collecting_system = false;
+                    result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                    return result;
+                }
+                if (!cfg->payload.has_length && !cfg->payload.has_crc) {
                     uint8_t msg_id = reader->internal_buffer[header_size - 1];
                     if (reader->get_message_info) {
                         message_info_t info;
@@ -1202,14 +1425,14 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         return result;
                     }
                 } else {
-                    size_t len_offset = reader->config->header.num_start_bytes;
-                    if (reader->config->payload.has_seq) len_offset++;
-                    if (reader->config->payload.has_sys_id) len_offset++;
-                    if (reader->config->payload.has_comp_id) len_offset++;
-                    
+                    size_t len_offset = cfg->header.num_start_bytes;
+                    if (cfg->payload.has_seq) len_offset++;
+                    if (cfg->payload.has_sys_id) len_offset++;
+                    if (cfg->payload.has_comp_id) len_offset++;
+
                     size_t payload_len = 0;
-                    if (reader->config->payload.has_length) {
-                        if (reader->config->payload.length_bytes == 1) {
+                    if (cfg->payload.has_length) {
+                        if (cfg->payload.length_bytes == 1) {
                             payload_len = reader->internal_buffer[len_offset];
                         } else {
                             payload_len = reader->internal_buffer[len_offset] | 
@@ -1220,7 +1443,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                     /* Check for length out-of-range against expected message struct size.
                      * Variable messages may legitimately encode shorter than max size, so
                      * flag only when payload_len > size (truncated) or < min_size (too short). */
-                    if (reader->config->payload.has_length && reader->get_message_info) {
+                    if (!reader->collecting_system && cfg->payload.has_length && reader->get_message_info) {
                         uint16_t full_msg_id = 0;
                         if (reader->config->payload.has_pkg_id) {
                             full_msg_id = (uint16_t)reader->internal_buffer[header_size - 2] << 8;
@@ -1233,7 +1456,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         }
                     }
                     
-                    uint8_t footer_size = profile_footer_size(reader->config);
+                    uint8_t footer_size = profile_footer_size(cfg);
                     reader->expected_frame_size = header_size + footer_size + payload_len;
                     
                     if (reader->expected_frame_size > reader->buffer_size) {
@@ -1247,7 +1470,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                     
                     if (reader->internal_data_len >= reader->expected_frame_size) {
                         result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
-                        if (result.valid) {
+                        if (result.valid && !result.is_system) {
                             if (reader->config->payload.has_seq) {
                                 uint8_t seq = reader->internal_buffer[reader->config->header.num_start_bytes];
                                 if (reader->last_seq_valid) {
@@ -1257,8 +1480,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                                 reader->last_seq = seq;
                                 reader->last_seq_valid = true;
                             }
-                        } else {
-                            if (reader->config->payload.has_crc) {
+                        } else if (!result.valid) {
+                            if (cfg->payload.has_crc) {
                                 reader->diagnostics.cnt_crc_failures++;
                                 result.status = FRAME_MSG_STATUS_CRC_FAILURE;
                             } else {
@@ -1270,9 +1493,10 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
                         reader->expected_frame_size = 0;
+                        reader->collecting_system = false;
                         return result;
                     }
-                    
+
                     reader->state = ACC_STATE_COLLECTING_PAYLOAD;
                 }
             }
@@ -1292,7 +1516,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             
             if (reader->internal_data_len >= reader->expected_frame_size) {
                 result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
-                if (result.valid) {
+                if (result.valid && !result.is_system) {
                     if (reader->config->payload.has_seq) {
                         uint8_t seq = reader->internal_buffer[reader->config->header.num_start_bytes];
                         if (reader->last_seq_valid) {
@@ -1302,8 +1526,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         reader->last_seq = seq;
                         reader->last_seq_valid = true;
                     }
-                } else {
-                    if (reader->config->payload.has_crc) {
+                } else if (!result.valid) {
+                    if (cfg->payload.has_crc) {
                         reader->diagnostics.cnt_crc_failures++;
                         result.status = FRAME_MSG_STATUS_CRC_FAILURE;
                     } else {
@@ -1315,10 +1539,11 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
                 reader->expected_frame_size = 0;
+                reader->collecting_system = false;
                 return result;
             }
             break;
-            
+
         default:
             reader->state = ACC_STATE_LOOKING_FOR_START1;
             break;
@@ -1333,13 +1558,32 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
     return result;
 }
 
+/* Push one byte (stream mode). System frames are returned (is_system) only with
+ * accumulating_reader_set_deliver_system_frames(reader, true). */
+static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader_t* reader, uint8_t byte)
+{
+    frame_msg_info_t result = _acc_push_byte(reader, byte);
+    if (result.valid && result.is_system) {
+        _acc_count_system_frame(reader, &result);
+        if (!reader->deliver_system_frames) {
+            frame_msg_info_t hidden = frame_msg_info_empty();
+            hidden.status = FRAME_MSG_STATUS_WAITING_FOR_START;
+            hidden.diagnostics = &reader->diagnostics;
+            return hidden;
+        }
+    }
+    return result;
+}
+
 static inline frame_msg_info_t _acc_parse_buffer(
     const accumulating_reader_t* reader,
     const uint8_t* buffer,
     size_t size)
 {
     frame_msg_info_t result;
-    if (reader->config->payload.has_crc || reader->config->payload.has_length) {
+    if (_sf_is_system_start(&reader->system_config, reader->system_enabled, buffer, size)) {
+        result = _sf_parse_system(&reader->system_config, buffer, size);
+    } else if (reader->config->payload.has_crc || reader->config->payload.has_length) {
         result = profile_parse_with_crc(reader->config, buffer, size, reader->get_message_info);
     } else {
         result = profile_parse_minimal(reader->config, buffer, size, reader->get_message_info);
@@ -1385,8 +1629,7 @@ static inline frame_parser_diagnostics_t accumulating_reader_diagnostics(const a
 }
 
 static inline void accumulating_reader_reset_diagnostics(accumulating_reader_t* reader) {
-    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0, 0};
-    reader->diagnostics = zero_diag;
+    memset(&reader->diagnostics, 0, sizeof(reader->diagnostics));
 }
 
 static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
@@ -1399,6 +1642,9 @@ static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
     reader->current_offset = 0;
     reader->last_seq = 0;
     reader->last_seq_valid = false;
+    reader->last_sys_seq = 0;
+    reader->last_sys_seq_valid = false;
+    reader->collecting_system = false;
 }
 
 

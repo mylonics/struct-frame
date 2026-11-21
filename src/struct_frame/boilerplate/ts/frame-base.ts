@@ -75,6 +75,10 @@ export interface FrameParserDiagnostics {
     cntFailedBytes: number;
     cntLenErrors: number;
     cntSeqGaps: number;
+    /** System frames (payload type 9) received, whether delivered or hidden. */
+    cntSystemFrames: number;
+    /** Candidate system frames whose header failed validation (unknown id, bad length). */
+    cntSystemRejected: number;
 }
 
 // Parse result interface
@@ -91,6 +95,19 @@ export interface FrameMsgInfo {
      * undefined when unknown. Lets deserialize() avoid guessing from the length.
      */
     variableEncoding?: boolean;
+    /** Sequence number, for profiles (and system frames) that carry one. */
+    sequence?: number;
+    /** Sender system id, for profiles (and system frames) that carry one. */
+    systemId?: number;
+    /** Sender component id, for profiles (and system frames) that carry one. */
+    componentId?: number;
+    /** Package id, for profiles with a package id (also the high byte of msgId). */
+    packageId?: number;
+    /**
+     * True for a system frame (payload type 9): msgId is then a system message id
+     * (see system-frames.ts), never an application message id.
+     */
+    isSystem?: boolean;
     diagnostics?: FrameParserDiagnostics;
 }
 

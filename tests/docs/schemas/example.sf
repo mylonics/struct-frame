@@ -1,25 +1,23 @@
-// Schema behind the examples in basic-usage/language-examples.mdx and the SDK pages
-// (package `example`); doc samples compile against it.
+/// Schema behind the examples in basic-usage/language-examples.mdx and the SDK pages
+/// (package `example`); doc samples compile against it.
+
 package example;
 
-message Status {
-  option msgid = 1;
-  uint32 id = 1;
-  float value = 2;
+message Status @1 {
+  uint32 id;
+  float value;
 }
 
-message SensorData {
-  option msgid = 2;
-  repeated float readings = 1 [max_size=10];
+message SensorData @2 {
+  vector<float, 10> readings;
 }
 
-message Position {
-  double lat = 1;
-  double lon = 2;
+struct Position {
+  double lat;
+  double lon;
 }
 
-message Vehicle {
-  option msgid = 3;
-  uint32 id = 1;
-  Position pos = 2;
+message Vehicle @3 {
+  uint32 id;
+  Position pos;
 }

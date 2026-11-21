@@ -27,11 +27,12 @@ except ModuleNotFoundError:
 
 needs_toml = pytest.mark.skipif(not HAVE_TOML, reason="no TOML parser (Python < 3.11 without tomli)")
 
-SCHEMA ="""package hello;
-message Pose {
-  option msgid = 1;
-  float pitch = 1;
-  uint32 sample = 2;
+SCHEMA ="""\
+package hello;
+
+message Pose @1 {
+  float pitch;
+  uint32 sample;
 }
 """
 
@@ -185,8 +186,20 @@ def test_quiet_prints_nothing_on_success(tmp_path):
 
 def test_main_can_run_twice_in_one_process(tmp_path):
     """Parse state used to persist between calls, leaking the first schema into the second."""
-    schema(tmp_path, "a.sf", "package alpha;\nmessage A { option msgid = 1; uint8 x = 1; }\n")
-    schema(tmp_path, "b.sf", "package beta;\nmessage B { option msgid = 1; uint8 y = 1; }\n")
+    schema(tmp_path, "a.sf", """\
+package alpha;
+
+message A @1 {
+  uint8 x;
+}
+""")
+    schema(tmp_path, "b.sf", """\
+package beta;
+
+message B @1 {
+  uint8 y;
+}
+""")
     code = (
         "from struct_frame import main\n"
         "assert main(['a.sf', '--lang', 'c', '--out', 'oa', '-q']) == 0\n"
@@ -237,27 +250,33 @@ def test_python_package_names_that_cannot_work_are_rejected(tmp_path):
     r = run(tmp_path, "hello.sf", "--lang", "py", "--py-package", "not-valid")
     assert r.returncode == 1 and "not a valid Python identifier" in r.stderr
     schema(tmp_path, "frame_profiles.sf",
-           "package frame_profiles;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+           """\
+package frame_profiles;
+
+message M @1 {
+  uint8 x;
+}
+""")
     r = run(tmp_path, "frame_profiles.sf", "--lang", "py")
     assert r.returncode == 1 and "same name as a module of the Python runtime" in r.stderr
     # Other languages are unaffected by the Python-only restriction.
     assert run(tmp_path, "frame_profiles.sf", "--lang", "c").returncode == 0
 
 
-STRINGS_SF = """package strs;
-message S {
-  option msgid = 1;
-  option variable = true;
-  string fixed = 1 [size=8];
-  string var = 2 [max_size=12];
-  repeated string fixed_arr = 3 [size=2, element_size=6];
-  repeated string var_arr = 4 [max_size=3, element_size=6];
+STRINGS_SF = """\
+package strs;
+
+message S @1 [variable] {
+  fixed_string<8> fixed;
+  string<12> var;
+  array<fixed_string<6>, 2> fixed_arr;
+  vector<fixed_string<6>, 3> var_arr;
 }
-message F {
-  option msgid = 2;
-  string fixed = 1 [size=8];
-  string var = 2 [max_size=12];
-  repeated string arr = 3 [max_size=2, element_size=4];
+
+message F @2 {
+  fixed_string<8> fixed;
+  string<12> var;
+  vector<fixed_string<4>, 2> arr;
 }
 """
 

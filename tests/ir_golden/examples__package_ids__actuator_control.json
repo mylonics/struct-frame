@@ -1,0 +1,383 @@
+{
+ "ir": {
+  "documentation_hash": "cceb25279804ca4dcf9c62199efdfcdf16a98f32a22bb3c433cd969731267382",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "ActuatorState": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "ACTIVE": [
+        1,
+        []
+       ],
+       "CALIBRATING": [
+        3,
+        []
+       ],
+       "ERROR": [
+        2,
+        []
+       ],
+       "IDLE": [
+        0,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "ACTIVE": [],
+       "CALIBRATING": [],
+       "ERROR": [],
+       "IDLE": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "ActuatorState",
+      "package": "actuator_control",
+      "size": 1,
+      "source_file": "actuator_control.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "actuator_control.sf": [
+      "// Package ID 2. msgid 1 here does not clash with sensor_data's msgid 1,",
+      "// because the package id is part of the wire id."
+     ]
+    },
+    "messages": {
+     "ActuatorCommand": {
+      "_class": "Message",
+      "base_size": 21,
+      "comments": [
+       "// wire id (2 << 8) | 1 = 513"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "actuator_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "actuator_id",
+        "number": 1,
+        "package": "actuator_control",
+        "size": 16,
+        "size_option": 16,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "desired_state": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ActuatorState",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "desired_state",
+        "number": 2,
+        "package": "actuator_control",
+        "size": 1,
+        "size_option": null,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "actuator_control",
+        "type_ref": {
+         "message": null,
+         "name": "ActuatorState",
+         "package": "actuator_control",
+         "ref": "enum"
+        }
+       },
+       "target_value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "target_value",
+        "number": 3,
+        "package": "actuator_control",
+        "size": 4,
+        "size_option": null,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       39,
+       80
+      ],
+      "magic_bytes_override": null,
+      "min_size": 21,
+      "name": "ActuatorCommand",
+      "oneofs": {},
+      "package": "actuator_control",
+      "size": 21,
+      "source_file": "actuator_control.sf",
+      "trailing_comments": [
+       "// wire id (2 << 8) | 1 = 513"
+      ],
+      "variable": false
+     },
+     "ActuatorStatus": {
+      "_class": "Message",
+      "base_size": 25,
+      "comments": [
+       "// wire id (2 << 8) | 2 = 514"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "actuator_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "actuator_id",
+        "number": 1,
+        "package": "actuator_control",
+        "size": 16,
+        "size_option": 16,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "current_state": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ActuatorState",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "current_state",
+        "number": 2,
+        "package": "actuator_control",
+        "size": 1,
+        "size_option": null,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "actuator_control",
+        "type_ref": {
+         "message": null,
+         "name": "ActuatorState",
+         "package": "actuator_control",
+         "ref": "enum"
+        }
+       },
+       "current_value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "current_value",
+        "number": 3,
+        "package": "actuator_control",
+        "size": 4,
+        "size_option": null,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "power_consumption": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "power_consumption",
+        "number": 4,
+        "package": "actuator_control",
+        "size": 4,
+        "size_option": null,
+        "source_file": "actuator_control.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       51,
+       131
+      ],
+      "magic_bytes_override": null,
+      "min_size": 25,
+      "name": "ActuatorStatus",
+      "oneofs": {},
+      "package": "actuator_control",
+      "size": 25,
+      "source_file": "actuator_control.sf",
+      "trailing_comments": [
+       "// wire id (2 << 8) | 2 = 514"
+      ],
+      "variable": false
+     }
+    },
+    "name": "actuator_control",
+    "package_id": 2,
+    "package_id_explicit": true,
+    "services": {}
+   }
+  ],
+  "schema_hash": "98e659bffaf74476333ec63272569569c593e3ccbf1a485c95a32b1875f464ae"
+ },
+ "outputs": {
+  "c/actuator_control.structframe.h": "b74ccf5b13e940e7e9709e10c408099335189fbe5c70e4c7db3b5c64814847ec",
+  "c/actuator_control.tests.h": "e7b33af85df557c4b7b07b8d0e19653e21d28a6e79fba9f37ca5d293595ae916",
+  "c/structframe_all.h": "53ba96679f175114aa0a607e8d6fc2f46cc21b476df7d4462e4987a306c062e7",
+  "c/test_roundtrip_actuator_control.c": "e727cdf6b2ad95137fa4161bfb37046a8ca8a70fe91438ec004c3acfcbcaaa9a",
+  "cpp/actuator_control.structframe.hpp": "30d936ce30364f5d7ad517d4212519562a0380149ac937aacee85c880d8c8f32",
+  "cpp/actuator_control.tests.hpp": "c76e78e0e90bed6a49dd98fe74a54906c951f818e3e0868f36916599d0d50076",
+  "cpp/structframe_all.hpp": "d23d4455eb60859404340ea3539f629f95cb54b7fc9b5e96b110953559e6bf4d",
+  "cpp/test_roundtrip_actuator_control.cpp": "777bdc2ef54a4a9f6ecfad79c33cb723db2f89bcef9455dc6291592bd39dcdaa",
+  "csharp/ActuatorControl/Constants.cs": "1b5912a878caa46ad902e68f1ec3c1f1e7611a5075188df67822825c930a63fd",
+  "csharp/ActuatorControl/Enums/ActuatorState.cs": "f7eaf2bfb1e872658801ce20bb6779145808759301ecb15fa74bef45d763021f",
+  "csharp/ActuatorControl/MessageDefinitions.cs": "cc847e5c8f4fcd1029a57e255641150fb547a5ee27ae5bf5d499bc8c2a0f7bef",
+  "csharp/ActuatorControl/Messages/ActuatorCommand.cs": "e683cc5cc74296ef1c1c9dc326a5dfcc0e616648dda0445038d541d915358ed8",
+  "csharp/ActuatorControl/Messages/ActuatorStatus.cs": "d8735e8a7c3cff2d98e3f555fb8e530ab1275eb519afd719b949e15e0db55c1f",
+  "csharp/ActuatorControl/PackageInfo.cs": "449a62f63aa712933df4cc8301735bae93a947f0896fff3d39ec19fc3ab92a7f",
+  "csharp/ActuatorControl/SdkInterface.cs": "fd922d6e3e941d2d33daea7f18dce54cec84757d4f2a481dfdf9ca183caac5d9",
+  "csharp/ActuatorControl/test_roundtrip_actuator_control.cs": "c246c9d508b52323ee1f2e6567d4a5e05aecdba64aeeb14778f35afade12bfce",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/actuator_control.graphql": "3af679faf3abd976b163428b590f36b9049cc5adb4a7e42868cb9dc771f7418a",
+  "gql/schema.graphql": "7013101ab714d28cd6f58ef98bc0de509788cdcc7117357e87719a6a925c5432",
+  "js/actuator-control.structframe.js": "81777166829bf643302f17c7bd3276374deddbdde79a5233477d7ac8dfeb0766",
+  "js/test_roundtrip_actuator_control.js": "310aac5f5dae4af8f24953c0acd60a3a73df62c1365142fb36593b4b7c345738",
+  "py/structframe/actuator_control.py": "a2fd23b4c43d260e071c3718c09ee283f3fcdb9626c37ab2592c418330c24c6a",
+  "py/structframe/actuator_control_tests.py": "88a123ef4a1894fc3cac9ad31f1f66a8462404e87a77ce18d649a4642e11ae4d",
+  "py/test_roundtrip_actuator_control.py": "6556f2291d33793cfbf99c9e9eae155db1a81fe6e417e2447aa17effd289fb2f",
+  "rust/Cargo.toml": "9da9cb10e62cd73e4ad9553e11ef08d080b8a3814920a25d683ec7d55c731874",
+  "rust/actuator_control.structframe.rs": "a91dae2af99ca86ca254bc164c6b4fd4e31ed6cfd3dca0d057ac675214979d0d",
+  "rust/test_roundtrip_actuator_control.rs": "c5d549dfea8d2bdd96c7be240a0993d9edea9b967d36d54b2b9ad6595c2d869f",
+  "sf_compile.json": "13f761d23a68d2da720ab798a9bc0fbb01487b0247535b828894bff76798e023",
+  "ts/actuator-control.structframe.ts": "dd67b86f5815b13892b9206d235c6c861892c30632a2b1e757692c455f84e0d4",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_actuator_control.ts": "f9a36df0c59b6e41d8b46260e9a1b66e7d71004b7142ffef69a2728d4670c76d"
+ },
+ "outputs_no_packed": {
+  "c/actuator_control.structframe.h": "a1fdf14e9a7dcaca5297d3a8ba84bf60fd6b5940e84382bbb076e8adfb9c2f1f",
+  "c/actuator_control.tests.h": "e7b33af85df557c4b7b07b8d0e19653e21d28a6e79fba9f37ca5d293595ae916",
+  "c/structframe_all.h": "53ba96679f175114aa0a607e8d6fc2f46cc21b476df7d4462e4987a306c062e7",
+  "c/test_roundtrip_actuator_control.c": "e727cdf6b2ad95137fa4161bfb37046a8ca8a70fe91438ec004c3acfcbcaaa9a",
+  "cpp/actuator_control.structframe.hpp": "d14ecd94bd0c781dd3213ba7683cc98886e6c779806172dc09d2fbd0ca3e7439",
+  "cpp/actuator_control.tests.hpp": "c76e78e0e90bed6a49dd98fe74a54906c951f818e3e0868f36916599d0d50076",
+  "cpp/structframe_all.hpp": "d23d4455eb60859404340ea3539f629f95cb54b7fc9b5e96b110953559e6bf4d",
+  "cpp/test_roundtrip_actuator_control.cpp": "777bdc2ef54a4a9f6ecfad79c33cb723db2f89bcef9455dc6291592bd39dcdaa",
+  "csharp/ActuatorControl/Constants.cs": "b6849d214e1cf197bb9dd2c20430175aa56201724f7c0aeb24bdf1f0a1001186",
+  "csharp/ActuatorControl/Enums/ActuatorState.cs": "f7eaf2bfb1e872658801ce20bb6779145808759301ecb15fa74bef45d763021f",
+  "csharp/ActuatorControl/MessageDefinitions.cs": "cc847e5c8f4fcd1029a57e255641150fb547a5ee27ae5bf5d499bc8c2a0f7bef",
+  "csharp/ActuatorControl/Messages/ActuatorCommand.cs": "708dab3214758364baff7eea7b7985222a8a1832eb3e32bed27ae39b496342f3",
+  "csharp/ActuatorControl/Messages/ActuatorStatus.cs": "6b307fee7e602216ef57f4f23457bb01e89e960e51c6cd40df388860fc7b3b7b",
+  "csharp/ActuatorControl/PackageInfo.cs": "449a62f63aa712933df4cc8301735bae93a947f0896fff3d39ec19fc3ab92a7f",
+  "csharp/ActuatorControl/SdkInterface.cs": "fd922d6e3e941d2d33daea7f18dce54cec84757d4f2a481dfdf9ca183caac5d9",
+  "csharp/ActuatorControl/test_roundtrip_actuator_control.cs": "c246c9d508b52323ee1f2e6567d4a5e05aecdba64aeeb14778f35afade12bfce",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/actuator_control.graphql": "3af679faf3abd976b163428b590f36b9049cc5adb4a7e42868cb9dc771f7418a",
+  "gql/schema.graphql": "7013101ab714d28cd6f58ef98bc0de509788cdcc7117357e87719a6a925c5432",
+  "js/actuator-control.structframe.js": "0f2f83c8cb98395d346a951b44b6db098330d47f55536855e680f2ad6c54d47c",
+  "js/test_roundtrip_actuator_control.js": "310aac5f5dae4af8f24953c0acd60a3a73df62c1365142fb36593b4b7c345738",
+  "py/structframe/actuator_control.py": "11c25d914be186920490af0e5112685e288126622fa4f606e428f9f9d2ac3b43",
+  "py/structframe/actuator_control_tests.py": "88a123ef4a1894fc3cac9ad31f1f66a8462404e87a77ce18d649a4642e11ae4d",
+  "py/test_roundtrip_actuator_control.py": "6556f2291d33793cfbf99c9e9eae155db1a81fe6e417e2447aa17effd289fb2f",
+  "rust/Cargo.toml": "9da9cb10e62cd73e4ad9553e11ef08d080b8a3814920a25d683ec7d55c731874",
+  "rust/actuator_control.structframe.rs": "b14093809c528386f06968b6d437d007fc9c3ec899c45ed98929a1d0745207df",
+  "rust/test_roundtrip_actuator_control.rs": "c5d549dfea8d2bdd96c7be240a0993d9edea9b967d36d54b2b9ad6595c2d869f",
+  "sf_compile.json": "6367836caf82554271da991c1c4301acd9e350afe28c447b562739723295a4e2",
+  "ts/actuator-control.structframe.ts": "2d456bbd10060148e9527b12d9e282df8d8b5ec8ece329eee08dbe0b78b6630a",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_actuator_control.ts": "f9a36df0c59b6e41d8b46260e9a1b66e7d71004b7142ffef69a2728d4670c76d"
+ },
+ "schema": "examples/package_ids/actuator_control.sf"
+}

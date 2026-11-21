@@ -15,6 +15,8 @@ pub enum PayloadType {
     Seq = 6,
     MultiSystemStream = 7,
     ExtendedMultiSystemStream = 8,
+    /// System frames: struct-frame's own messages (see `system_frames`).
+    System = 9,
 }
 
 /// Payload configuration
@@ -87,6 +89,66 @@ pub const PAYLOAD_EXTENDED_CONFIG: PayloadConfig = PayloadConfig {
     has_comp_id: false,
 };
 
+/// ExtendedMsgIds payload: [LEN] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+pub const PAYLOAD_EXTENDED_MSG_IDS_CONFIG: PayloadConfig = PayloadConfig {
+    payload_type: PayloadType::ExtendedMsgIds,
+    has_length: true,
+    length_bytes: 1,
+    has_crc: true,
+    has_pkg_id: true,
+    has_seq: false,
+    has_sys_id: false,
+    has_comp_id: false,
+};
+
+/// ExtendedLength payload: [LEN_LO] [LEN_HI] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+pub const PAYLOAD_EXTENDED_LENGTH_CONFIG: PayloadConfig = PayloadConfig {
+    payload_type: PayloadType::ExtendedLength,
+    has_length: true,
+    length_bytes: 2,
+    has_crc: true,
+    has_pkg_id: false,
+    has_seq: false,
+    has_sys_id: false,
+    has_comp_id: false,
+};
+
+/// SysComp payload: [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+pub const PAYLOAD_SYS_COMP_CONFIG: PayloadConfig = PayloadConfig {
+    payload_type: PayloadType::SysComp,
+    has_length: true,
+    length_bytes: 1,
+    has_crc: true,
+    has_pkg_id: false,
+    has_seq: false,
+    has_sys_id: true,
+    has_comp_id: true,
+};
+
+/// Seq payload: [SEQ] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+pub const PAYLOAD_SEQ_CONFIG: PayloadConfig = PayloadConfig {
+    payload_type: PayloadType::Seq,
+    has_length: true,
+    length_bytes: 1,
+    has_crc: true,
+    has_pkg_id: false,
+    has_seq: true,
+    has_sys_id: false,
+    has_comp_id: false,
+};
+
+/// MultiSystemStream payload: [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+pub const PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG: PayloadConfig = PayloadConfig {
+    payload_type: PayloadType::MultiSystemStream,
+    has_length: true,
+    length_bytes: 1,
+    has_crc: true,
+    has_pkg_id: false,
+    has_seq: true,
+    has_sys_id: true,
+    has_comp_id: true,
+};
+
 /// ExtendedMultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
 pub const PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG: PayloadConfig = PayloadConfig {
     payload_type: PayloadType::ExtendedMultiSystemStream,
@@ -97,4 +159,17 @@ pub const PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG: PayloadConfig = PayloadCo
     has_seq: true,
     has_sys_id: true,
     has_comp_id: true,
+};
+
+/// System frames: [SEQ] [SYS_ID] [COMP_ID] [LEN16] [SYS_MSG_ID] [PACKET] [CRC1] [CRC2], carried
+/// after a Basic or Tiny header with payload type 9 (start byte 0x79).
+pub const PAYLOAD_SYSTEM_CONFIG: PayloadConfig = PayloadConfig {
+    payload_type: PayloadType::System,
+    has_length: true,
+    length_bytes: 2,
+    has_crc: true,
+    has_seq: true,
+    has_sys_id: true,
+    has_comp_id: true,
+    has_pkg_id: false,
 };

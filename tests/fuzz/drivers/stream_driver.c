@@ -1,7 +1,9 @@
-/* Stream driver: stream_driver <profile> <stream.bin> <chunk>
+/* Stream driver: stream_driver <profile> <stream.bin> <chunk> [system]
  * Feeds the file through accumulating_reader_t in <chunk>-byte slices and prints one
  * "<msg_id> <payload_len> <fnv1a>" line per valid frame. Uses the same message table as
- * tests/fuzz/corpus.py. */
+ * tests/fuzz/corpus.py. With a 4th argument `system` the reader delivers system frames, printed with
+ * msg_id + 65536, and a final "-1 <cnt_system_frames> <cnt_system_rejected> <cnt_crc_failures>
+ * <cnt_seq_gaps>" line follows. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,7 +45,8 @@ static const profile_config_t* pick(const char* name) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 4) return 64;
+    if (argc != 4 && argc != 5) return 64;
+    bool deliver = argc == 5 && !strcmp(argv[4], "system");
     const profile_config_t* cfg = pick(argv[1]);
     if (!cfg) return 64;
     size_t chunk = (size_t)strtoull(argv[3], NULL, 10);
@@ -59,14 +62,19 @@ int main(int argc, char** argv) {
     uint8_t internal[1024];
     accumulating_reader_t reader;
     accumulating_reader_init(&reader, cfg, internal, sizeof(internal), get_info);
+    accumulating_reader_set_deliver_system_frames(&reader, deliver);
     for (size_t pos = 0; pos < (size_t)n; pos += chunk) {
         size_t len = (size_t)n - pos < chunk ? (size_t)n - pos : chunk;
         accumulating_reader_add_data(&reader, data + pos, len);
         for (int guard = 0; guard < 1000000; guard++) {
             frame_msg_info_t m;
             if (!accumulating_reader_try_next(&reader, &m)) break;
-            if (m.valid) printf("%u %zu %u\n", m.msg_id, m.msg_len, fnv1a(m.msg_data, m.msg_len));
+            if (m.valid) printf("%u %zu %u\n", m.msg_id + (m.is_system ? 65536u : 0u), m.msg_len,
+                                fnv1a(m.msg_data, m.msg_len));
         }
     }
+    if (deliver) printf("-1 %u %u %u %u\n", reader.diagnostics.cnt_system_frames,
+                        reader.diagnostics.cnt_system_rejected, reader.diagnostics.cnt_crc_failures,
+                        reader.diagnostics.cnt_seq_gaps);
     return 0;
 }

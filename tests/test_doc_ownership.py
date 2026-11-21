@@ -24,31 +24,29 @@ from pathlib import Path
 from test_utils import _check, run_generator
 
 SCHEMA = """\
-// File header: describes this whole file
-// and spans two lines
+/// File header: describes this whole file
+/// and spans two lines
 
 package docs_test;
 
-// Priority levels
+/// Priority levels
 enum Level {
-  // Lowest level
+  /// Lowest level
   LOW = 0;
-  HIGH = 1; // Highest level
+  HIGH = 1;  /// Highest level
 }
 
-// Sensor reading
-message Reading {
+/// Sensor reading
+message Reading @1 {
   // handled by the option
-  option msgid = 1;
-
-  uint32 first = 1; // Describes first
-  // Leading docs for second
-  uint32 second = 2;
-  Level level = 3;
+  uint32 first;  /// Describes first
+  /// Leading docs for second
+  uint32 second;
+  Level level;
   oneof body {
-    // Leading docs for variant
-    uint8 small = 1; // Trailing docs for small
-    uint16 large = 2;
+    /// Leading docs for variant
+    uint8 small;  /// Trailing docs for small
+    uint16 large;
   }
   // dangling at the end of the message
 }
@@ -114,7 +112,7 @@ def test_file_header_is_not_attached_to_first_declaration():
 
 def test_csharp_file_docs_are_emitted_for_enum_only_packages():
     schema = """\
-// Enum-only package overview
+/// Enum-only package overview
 package enum_docs;
 
 enum State {

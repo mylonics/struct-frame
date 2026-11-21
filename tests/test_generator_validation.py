@@ -53,15 +53,13 @@ def test_duplicate_msgid() -> None:
     proto = """\
 package dup_id_test;
 
-message Alpha {
-  option msgid = 42;
-  uint32 value = 1;
+message Alpha @42 {
+  uint32 value;
 }
 
-// Intentional duplicate -- same msgid as Alpha
-message Beta {
-  option msgid = 42;
-  uint32 value = 1;
+/// Intentional duplicate -- same msgid as Alpha
+message Beta @42 {
+  uint32 value;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -79,22 +77,19 @@ message Beta {
 def test_duplicate_pkgid() -> None:
     """Two imported packages sharing the same pkgid must be rejected."""
     proto_dep = """\
-package pkg_dep;
-option pkgid = 7;
+package pkg_dep @7;
 
-message DepMsg {
-  option msgid = 1;
-  uint32 y = 1;
+message DepMsg @1 {
+  uint32 y;
 }
 """
     proto_main = """\
-import "pkg_dep.sf";
-package pkg_main;
-option pkgid = 7;
+package pkg_main @7;
 
-message MainMsg {
-  option msgid = 1;
-  uint32 x = 1;
+import "pkg_dep.sf";
+
+message MainMsg @1 {
+  uint32 x;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -114,23 +109,21 @@ def test_circular_import() -> None:
     """A -> B -> A circular import chain must be rejected."""
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / "circ_a.sf").write_text("""\
-import "circ_b.sf";
-package circ_a;
-option pkgid = 1;
+package circ_a @1;
 
-message MsgA {
-  option msgid = 1;
-  uint32 a = 1;
+import "circ_b.sf";
+
+message MsgA @1 {
+  uint32 a;
 }
 """)
         (Path(tmp) / "circ_b.sf").write_text("""\
-import "circ_a.sf";
-package circ_b;
-option pkgid = 2;
+package circ_b @2;
 
-message MsgB {
-  option msgid = 1;
-  uint32 b = 1;
+import "circ_a.sf";
+
+message MsgB @1 {
+  uint32 b;
 }
 """)
         result = _run(str(Path(tmp) / "circ_a.sf"))
@@ -151,19 +144,18 @@ def test_multi_package_missing_pkgid() -> None:
         (Path(tmp) / "dep.sf").write_text("""\
 package dep_pkg;
 
-message DepMsg {
-  option msgid = 1;
-  uint32 y = 1;
+message DepMsg @1 {
+  uint32 y;
 }
 """)
         main_sf = Path(tmp) / "main_pkg.sf"
         main_sf.write_text("""\
-import "dep.sf";
 package main_pkg;
 
-message MainMsg {
-  option msgid = 1;
-  uint32 x = 1;
+import "dep.sf";
+
+message MainMsg @1 {
+  uint32 x;
 }
 """)
         result = _run(str(main_sf))
@@ -176,33 +168,13 @@ message MainMsg {
 # docs/.../test-coverage.md §8.
 # =============================================================================
 
-def test_duplicate_field_numbers() -> None:
-    """Two fields in one message with the same field number must be rejected."""
-    proto = """\
-package dup_field_test;
-
-message Foo {
-  option msgid = 1;
-  uint32 a = 1;
-  uint32 b = 1;
-}
-"""
-    with tempfile.TemporaryDirectory() as tmp:
-        sf = Path(tmp) / "dup_field.sf"
-        sf.write_text(proto)
-        result = _run(str(sf))
-    _report("duplicate_field_numbers", result, expected_reject=True,
-            expected_msg="must be numbered 1..N")
-
-
 def test_array_missing_size() -> None:
-    """An array field with neither `size` nor `max_size` set must be rejected."""
+    """A vector without an element count must be rejected."""
     proto = """\
 package missing_array_size_test;
 
-message Foo {
-  option msgid = 1;
-  repeated uint32 xs = 1;
+message Foo @1 {
+  vector<uint32> xs;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -210,17 +182,16 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("array_missing_size_or_max_size", result, expected_reject=True,
-            expected_msg="missing required size or max_size")
+            expected_msg="element count")
 
 
 def test_string_missing_size() -> None:
-    """A string field with neither `size` nor `max_size` set must be rejected."""
+    """A string without a capacity must be rejected."""
     proto = """\
 package missing_string_size_test;
 
-message Foo {
-  option msgid = 1;
-  string name = 1;
+message Foo @1 {
+  string name;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -228,17 +199,16 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("string_missing_size_or_max_size", result, expected_reject=True,
-            expected_msg="missing required size or max_size")
+            expected_msg="'string' needs a capacity")
 
 
 def test_string_array_missing_element_size() -> None:
-    """A `repeated string` field without `element_size` must be rejected."""
+    """String array elements need a capacity (fixed_string<N>)."""
     proto = """\
 package missing_element_size_test;
 
-message Foo {
-  option msgid = 1;
-  repeated string names = 1 [max_size = 4];
+message Foo @1 {
+  vector<string, 4> names;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -246,7 +216,7 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("string_array_missing_element_size", result, expected_reject=True,
-            expected_msg="missing required element_size")
+            expected_msg="'string' needs a capacity")
 
 
 def test_array_max_size_over_255_allowed() -> None:
@@ -254,9 +224,8 @@ def test_array_max_size_over_255_allowed() -> None:
     proto = """\
 package max_size_over_255_allowed_test;
 
-message Foo {
-  option msgid = 1;
-  repeated uint32 xs = 1 [max_size = 300];
+message Foo @1 {
+  vector<uint32, 300> xs;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -271,9 +240,8 @@ def test_string_max_size_over_255_allowed() -> None:
     proto = """\
 package string_max_size_over_255_allowed_test;
 
-message Foo {
-  option msgid = 1;
-  string name = 1 [max_size = 300];
+message Foo @1 {
+  string<300> name;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -288,10 +256,7 @@ def test_envelope_zero_oneofs() -> None:
     proto = """\
 package envelope_no_oneof_test;
 
-message Empty {
-  option msgid = 1;
-  option envelope = true;
-}
+message Empty @1 [envelope] {}
 """
     with tempfile.TemporaryDirectory() as tmp:
         sf = Path(tmp) / "envelope_no_oneof.sf"
@@ -306,12 +271,10 @@ def test_envelope_non_message_oneof_fields() -> None:
     proto = """\
 package envelope_scalar_oneof_test;
 
-message Bad {
-  option msgid = 1;
-  option envelope = true;
+message Bad @1 [envelope] {
   oneof payload {
-    uint32 a = 1;
-    uint32 b = 2;
+    uint32 a;
+    uint32 b;
   }
 }
 """
@@ -329,14 +292,13 @@ def test_envelope_msgid_discriminator_without_msgid() -> None:
     proto = """\
 package env_msgid_missing_test;
 
-message Inner { uint32 v = 1; } // No msgid here on purpose.
+struct Inner {  /// No msgid here on purpose.
+  uint32 v;
+}
 
-message Outer {
-  option msgid = 1;
-  option envelope = true;
-  option discriminator = "msgid";
-  oneof payload {
-    Inner only = 1;
+message Outer @1 [envelope] {
+  oneof payload [discriminator = msgid] {
+    Inner only;
   }
 }
 """
@@ -353,14 +315,13 @@ def test_invalid_discriminator_value() -> None:
     proto = """\
 package invalid_disc_test;
 
-message Inner { option msgid = 2; uint32 v = 1; }
+message Inner @2 {
+  uint32 v;
+}
 
-message Outer {
-  option msgid = 1;
-  option envelope = true;
-  option discriminator = "not_a_real_discriminator";
-  oneof payload {
-    Inner only = 1;
+message Outer @1 [envelope] {
+  oneof payload [discriminator = bogus] {
+    Inner only;
   }
 }
 """
@@ -369,52 +330,27 @@ message Outer {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("invalid_discriminator_value", result, expected_reject=True,
-            expected_msg="Invalid discriminator option")
+            expected_msg="invalid discriminator 'bogus'")
 
-
-def test_field_number_zero() -> None:
-    """Field numbers must be >= 1 (proto3 convention)."""
-    proto = """\
-package zero_field_num_test;
-
-message Foo {
-  option msgid = 1;
-  uint32 a = 0;
-}
-"""
-    with tempfile.TemporaryDirectory() as tmp:
-        sf = Path(tmp) / "zero_field_num.sf"
-        sf.write_text(proto)
-        result = _run(str(sf))
-    _report("field_number_zero", result, expected_reject=True,
-            expected_msg="must be numbered 1..N")
-
-
-# ---------------------------------------------------------------------------
-# Message-level extensions_start combined with a oneof must be rejected:
-# wire order is fields-then-oneofs, so extension field bytes would sit BEFORE
-# the oneof and not form the trailing region the base-prefix CRC split needs.
-# ---------------------------------------------------------------------------
 
 def test_message_extensions_with_oneof_rejected() -> None:
     """Message-level extensions_start + oneof breaks the trailing-extension wire model."""
     proto = """\
 package ext_oneof_test;
 
-message SubA {
-  uint8 a = 1;
+struct SubA {
+  uint8 a;
 }
 
-message Foo {
-  option msgid = 1;
-  uint8 head = 1;
+message Foo @1 {
+  uint8 head;
 
-  option extensions_start = 2;
-  uint32 ext_field = 2;
+  extensions {
+    uint32 ext_field;
+  }
 
-  oneof payload {
-    option discriminator = "field_order";
-    SubA sub_a = 1;
+  oneof payload [discriminator = field_order] {
+    SubA sub_a;
   }
 }
 """
@@ -431,23 +367,22 @@ def test_oneof_level_extensions_still_allowed() -> None:
     proto = """\
 package ext_oneof_ok_test;
 
-message SubA {
-  uint8 a = 1;
+struct SubA {
+  uint8 a;
 }
 
-message SubB {
-  uint16 b = 1;
+struct SubB {
+  uint16 b;
 }
 
-message Foo {
-  option msgid = 1;
-  uint8 head = 1;
+message Foo @1 {
+  uint8 head;
 
-  oneof payload {
-    option discriminator = "field_order";
-    SubA sub_a = 1;
-    option extensions_start = 2;
-    SubB sub_b = 2;
+  oneof payload [discriminator = field_order] {
+    SubA sub_a;
+    extensions {
+      SubB sub_b;
+    }
   }
 }
 """
@@ -459,7 +394,7 @@ message Foo {
 
 
 # ---------------------------------------------------------------------------
-# Field default values ([default = ...])
+# Field default values (type name = value;)
 # ---------------------------------------------------------------------------
 
 def test_default_wrong_literal_type() -> None:
@@ -467,9 +402,8 @@ def test_default_wrong_literal_type() -> None:
     proto = """\
 package default_wrong_type_test;
 
-message Foo {
-  option msgid = 1;
-  uint8 a = 1 [default = true];
+message Foo @1 {
+  uint8 a = true;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -477,7 +411,7 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("default_wrong_literal_type", result, expected_reject=True,
-            expected_msg="must be an integer literal")
+            expected_msg="must be an integer")
 
 
 def test_default_integer_overflow() -> None:
@@ -485,9 +419,8 @@ def test_default_integer_overflow() -> None:
     proto = """\
 package default_overflow_test;
 
-message Foo {
-  option msgid = 1;
-  uint8 a = 1 [default = 999];
+message Foo @1 {
+  uint8 a = 999;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -508,9 +441,8 @@ enum Mode {
   ACTIVE = 1;
 }
 
-message Foo {
-  option msgid = 1;
-  Mode a = 1 [default = UNKNOWN];
+message Foo @1 {
+  Mode a = UNKNOWN;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -526,9 +458,8 @@ def test_default_string_exceeds_size() -> None:
     proto = """\
 package default_string_too_long_test;
 
-message Foo {
-  option msgid = 1;
-  string a = 1 [size = 4, default = "toolong"];
+message Foo @1 {
+  fixed_string<4> a = "toolong";
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -540,13 +471,12 @@ message Foo {
 
 
 def test_default_on_repeated_field_rejected() -> None:
-    """`[default = ...]` on a repeated field must be rejected."""
+    """A scalar default on an array field must be rejected."""
     proto = """\
 package default_repeated_test;
 
-message Foo {
-  option msgid = 1;
-  repeated uint8 a = 1 [size = 2, default = 1];
+message Foo @1 {
+  array<uint8, 2> a = 1;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -554,21 +484,20 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("default_on_repeated_field", result, expected_reject=True,
-            expected_msg="not supported on repeated fields")
+            expected_msg="must be an array literal")
 
 
 def test_default_on_message_field_rejected() -> None:
-    """`[default = ...]` on a nested message-typed field must be rejected."""
+    """A scalar default on a struct-typed field must be rejected."""
     proto = """\
 package default_message_field_test;
 
-message Sub {
-  uint8 x = 1;
+struct Sub {
+  uint8 x;
 }
 
-message Foo {
-  option msgid = 1;
-  Sub a = 1 [default = 1];
+message Foo @1 {
+  Sub a = 1;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -576,19 +505,18 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("default_on_message_field", result, expected_reject=True,
-            expected_msg="not supported on message-typed fields")
+            expected_msg="must be a struct value")
 
 
 def test_default_on_oneof_field_rejected() -> None:
-    """`[default = ...]` on a field inside a oneof must be rejected."""
+    """A default on a oneof variant must be rejected."""
     proto = """\
 package default_oneof_field_test;
 
-message Foo {
-  option msgid = 1;
+message Foo @1 {
   oneof payload {
-    uint8 a = 1 [default = 5];
-    uint8 b = 2;
+    uint8 a = 5;
+    uint8 b;
   }
 }
 """
@@ -597,7 +525,7 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("default_on_oneof_field", result, expected_reject=True,
-            expected_msg="not supported on oneof fields")
+            expected_msg="oneof variants cannot have default values")
 
 
 def test_default_valid_accepted() -> None:
@@ -610,14 +538,13 @@ enum Mode {
   ACTIVE = 1;
 }
 
-message Foo {
-  option msgid = 1;
-  uint32 a = 1 [default = 1000];
-  bool b = 2 [default = true];
-  Mode c = 3 [default = ACTIVE];
-  string d = 4 [size = 16, default = "device"];
-  float e = 5 [default = 1.5];
-  int8 f = 6 [default = -5];
+message Foo @1 {
+  uint32 a = 1000;
+  bool b = true;
+  Mode c = ACTIVE;
+  fixed_string<16> d = "device";
+  float e = 1.5;
+  int8 f = -5;
 }
 """
     with tempfile.TemporaryDirectory() as tmp:

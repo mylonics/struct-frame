@@ -30,17 +30,15 @@ enum BleHost {
   BLEHost = 3;
 }
 
-message BleMCuHost {
-  option msgid = 1;
-  uint32 gate_current = 1;
-  uint32 BLEHost = 2;
-  uint32 bleHostId = 3;
-  BleHost mode = 4;
+message BleMCuHost @1 {
+  uint32 gate_current;
+  uint32 BLEHost;
+  uint32 bleHostId;
+  BleHost mode;
 }
 
-message BleHostStatus {
-  option msgid = 2;
-  BleMCuHost host = 1;
+message BleHostStatus @2 {
+  BleMCuHost host;
 }
 """
 
@@ -392,7 +390,7 @@ def test_name_override_preserves_exact_emitted_enum_spelling():
         tmp = Path(tmp_dir)
         table = {"cpp": {"BleHost.GateCurrent": "RUN"}}
         schema = NAMES_SCHEMA.replace(
-            "BleHost mode = 4;", "BleHost mode = 4 [default = GateCurrent];")
+            "BleHost mode;", "BleHost mode = GateCurrent;")
         dirs = _generate(tmp, ["--name_overrides", str(_write_overrides(tmp, table))], schema)
         cpp = _read(dirs["cpp"] / "names_test.structframe.hpp")
         _check("    RUN = 1," in cpp, "C++ enum-entry overrides must bypass PascalCase conversion")
@@ -455,15 +453,17 @@ def test_name_overrides_package_qualified_keys():
 def test_field_and_oneof_variant_may_share_a_name_except_in_csharp():
     """Variants live in the oneof's own scope in C/C++/..., but C# flattens them into the class."""
     schema = (
-        "package shared_name;\n"
-        "message Reading {\n"
-        "  option msgid = 1;\n"
-        "  uint32 value = 1;\n"
-        "  oneof payload {\n"
-        "    uint32 value = 1;\n"
-        "    float ratio = 2;\n"
-        "  }\n"
-        "}\n")
+        """\
+package shared_name;
+
+message Reading @1 {
+  uint32 value;
+  oneof payload {
+    uint32 value;
+    float ratio;
+  }
+}
+""")
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         proto = tmp / "shared_name.sf"
@@ -474,3 +474,38 @@ def test_field_and_oneof_variant_may_share_a_name_except_in_csharp():
         result = run_generator(proto, "--build_csharp", "--csharp_path", str(tmp / "cs") + os.sep, "--force")
         _check(result.returncode != 0 and "collision" in (result.stdout + result.stderr),
                f"csharp must still reject the colliding member names:\n{result.stdout}{result.stderr}")
+
+
+def test_csharp_fields_cannot_shadow_generated_message_constants():
+    """C# message classes carry MsgId/Magic1/Magic2/MaxSize/... constants; a field whose
+    PascalCase property takes one of those names would not compile (CS0102)."""
+    schema = (
+        """\
+package clash;
+
+message Request @1 {
+  uint16 msg_id;
+  uint8 magic1;
+}
+
+struct Plain {
+  uint16 msg_id;
+}
+""")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        proto = tmp / "clash.sf"
+        proto.write_text(schema)
+        result = run_generator(proto, "--build_csharp", "--csharp_path", str(tmp / "cs") + os.sep, "--force")
+        output = result.stdout + result.stderr
+        _check(result.returncode != 0 and "the generated member MsgId and clash.Request.msg_id" in output,
+               f"csharp must reject a field named like a generated constant:\n{output}")
+        _check("clash.sf:4:3:" in output, f"the error should point at the field:\n{output}")
+        # Only C# emits these members, and an id-less struct has no MsgId.
+        ok = proto.with_name("ok.sf")
+        ok.write_text(schema.replace("message Request @1 {\n  uint16 msg_id;\n  uint8 magic1;\n}\n", ""))
+        result = run_generator(ok, "--build_csharp", "--csharp_path", str(tmp / "cs2") + os.sep, "--force")
+        _check(result.returncode == 0, f"a struct field named msg_id is fine in C#:\n{result.stdout}{result.stderr}")
+        for lang in ("c", "cpp", "py", "ts", "rust"):
+            result = run_generator(proto, f"--build_{lang}", f"--{lang}_path", str(tmp / lang) + os.sep, "--force")
+            _check(result.returncode == 0, f"{lang} must accept msg_id/magic1 fields:\n{result.stdout}{result.stderr}")

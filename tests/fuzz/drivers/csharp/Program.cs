@@ -1,4 +1,6 @@
-// Stream driver: StreamDriver <profile> <stream.bin> <chunk>
+// Stream driver: StreamDriver <profile> <stream.bin> <chunk> [system]
+// With `system` the reader delivers system frames (printed with MsgId + 65536) and a final
+// "-1 <CntSystemFrames> <CntSystemRejected> <CntCrcFailures> <CntSeqGaps>" line follows.
 // The message table matches tests/fuzz/corpus.py.
 using System;
 using System.IO;
@@ -28,7 +30,8 @@ internal static class Program
 
     private static int Main(string[] args)
     {
-        if (args.Length != 3) return 64;
+        if (args.Length != 3 && args.Length != 4) return 64;
+        bool deliver = args.Length == 4 && args[3] == "system";
         ProfileConfig cfg = args[0] switch
         {
             "standard" => Profiles.Standard,
@@ -40,7 +43,7 @@ internal static class Program
         };
         int chunk = int.Parse(args[2]);
         byte[] data = File.ReadAllBytes(args[1]);
-        var reader = new AccumulatingReader(cfg, 1024, GetInfo);
+        var reader = new AccumulatingReader(cfg, 1024, GetInfo) { DeliverSystemFrames = deliver };
         var sb = new StringBuilder();
         for (int pos = 0; pos < data.Length; pos += chunk)
         {
@@ -51,10 +54,15 @@ internal static class Program
             for (int guard = 0; guard < 1000000 && reader.TryNext(out FrameMsgInfo f); guard++)
             {
                 if (f.Valid && f.MsgData != null)
-                    sb.Append(f.MsgId).Append(' ').Append(f.MsgLen).Append(' ')
+                    sb.Append(f.MsgId + (f.IsSystem ? 65536 : 0)).Append(' ').Append(f.MsgLen).Append(' ')
                       .Append(Fnv1a(f.MsgData, f.MsgDataOffset, f.MsgLen)).Append('\n');
             }
         }
+        if (deliver)
+            sb.Append("-1 ").Append(reader.Diagnostics.CntSystemFrames).Append(' ')
+              .Append(reader.Diagnostics.CntSystemRejected).Append(' ')
+              .Append(reader.Diagnostics.CntCrcFailures).Append(' ')
+              .Append(reader.Diagnostics.CntSeqGaps).Append('\n');
         Console.Out.Write(sb.ToString());
         return 0;
     }

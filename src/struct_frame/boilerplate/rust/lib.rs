@@ -6,6 +6,9 @@ pub mod frame_headers;
 pub mod payload_types;
 pub mod frame_profiles;
 pub mod struct_frame_sdk;
+pub mod system_frames;
+#[allow(unused_imports, dead_code, non_camel_case_types)]
+pub mod sf_system;
 
 pub use frame_base::{
     fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo, FrameMsgStatus,

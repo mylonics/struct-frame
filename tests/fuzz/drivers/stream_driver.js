@@ -1,4 +1,6 @@
-// Stream driver: node stream_driver.js <profile> <stream.bin> <chunk>
+// Stream driver: node stream_driver.js <profile> <stream.bin> <chunk> [system]
+// With `system` the reader delivers system frames (printed with msgId + 65536) and a final
+// "-1 <cntSystemFrames> <cntSystemRejected> <cntCrcFailures> <cntSeqGaps>" line follows.
 // Runs the compiled runtime (boilerplate/js is built from the TypeScript source), so this
 // covers TypeScript too. The message table matches tests/fuzz/corpus.py.
 const fs = require('fs');
@@ -22,17 +24,22 @@ function fnv1a(d) {
   return h;
 }
 
-const [profile, file, chunkArg] = process.argv.slice(2);
+const [profile, file, chunkArg, mode] = process.argv.slice(2);
 const chunk = Number(chunkArg);
+const deliver = mode === 'system';
 const data = fs.readFileSync(file);
-const reader = new fp.AccumulatingReader(CONFIGS[profile], getInfo, 1024);
+const reader = new fp.AccumulatingReader(CONFIGS[profile], getInfo, 1024, deliver);
 const out = [];
 for (let pos = 0; pos < data.length; pos += chunk) {
   reader.addData(new Uint8Array(data.subarray(pos, Math.min(pos + chunk, data.length))));
   for (let guard = 0; guard < 1000000; guard++) {
     const r = reader.tryNext();
     if (r === null) break;
-    if (r.valid) out.push(`${r.msgId} ${r.msgLen} ${fnv1a(r.msgData.subarray(0, r.msgLen))}`);
+    if (r.valid) out.push(`${r.msgId + (r.isSystem ? 65536 : 0)} ${r.msgLen} ${fnv1a(r.msgData.subarray(0, r.msgLen))}`);
   }
+}
+if (deliver) {
+  const d = reader.diagnostics;
+  out.push(`-1 ${d.cntSystemFrames} ${d.cntSystemRejected} ${d.cntCrcFailures} ${d.cntSeqGaps}`);
 }
 process.stdout.write(out.map((l) => l + '\n').join(''));

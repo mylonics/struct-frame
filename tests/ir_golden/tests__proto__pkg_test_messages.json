@@ -1,0 +1,719 @@
+{
+ "ir": {
+  "documentation_hash": "16122fdc622836d214e6d7a099b814fb76e44c6c495f577750273ae910afa24d",
+  "package_imports": {
+   "pkg_test_messages": [
+    "common_types",
+    "pkg_test_a"
+   ]
+  },
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "Status": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "ACTIVE": [
+        1,
+        []
+       ],
+       "ERROR": [
+        2,
+        []
+       ],
+       "IDLE": [
+        0,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "ACTIVE": [],
+       "ERROR": [],
+       "IDLE": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "Status",
+      "package": "common_types",
+      "size": 1,
+      "source_file": "common_types.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "common_types.sf": [
+      "// Common types that can be imported by other proto files",
+      "// Note: No pkgid defined here - will inherit from importing file"
+     ]
+    },
+    "messages": {
+     "Timestamp": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [
+       "// msgid 100: this package inherits its importer's pkgid, so its ids share the",
+       "// importer's id space. 1 would collide with pkg_test_messages.PackageTestMessage."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "nanoseconds": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "nanoseconds",
+        "number": 2,
+        "package": "common_types",
+        "size": 4,
+        "size_option": null,
+        "source_file": "common_types.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "seconds": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint64",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "seconds",
+        "number": 1,
+        "package": "common_types",
+        "size": 8,
+        "size_option": null,
+        "source_file": "common_types.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 100,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// msgid 100: this package inherits its importer's pkgid, so its ids share the",
+       "// importer's id space. 1 would collide with pkg_test_messages.PackageTestMessage."
+      ],
+      "magic_bytes": [
+       19,
+       31
+      ],
+      "magic_bytes_override": null,
+      "min_size": 12,
+      "name": "Timestamp",
+      "oneofs": {},
+      "package": "common_types",
+      "size": 12,
+      "source_file": "common_types.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "common_types",
+    "package_id": 1,
+    "package_id_explicit": false,
+    "services": {}
+   },
+   {
+    "consts": {},
+    "enums": {
+     "ActionType": {
+      "_class": "Enum",
+      "comments": [],
+      "data": {
+       "PAUSE": [
+        2,
+        []
+       ],
+       "RESUME": [
+        3,
+        []
+       ],
+       "START": [
+        0,
+        []
+       ],
+       "STOP": [
+        1,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "PAUSE": [],
+       "RESUME": [],
+       "START": [],
+       "STOP": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [],
+      "message": null,
+      "name": "ActionType",
+      "package": "pkg_test_a",
+      "size": 1,
+      "source_file": "pkg_test_a.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "pkg_test_a.sf": [
+      "// Package A for testing package imports and inheritance"
+     ]
+    },
+    "messages": {
+     "ActionMessage": {
+      "_class": "Message",
+      "base_size": 70,
+      "comments": [],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "action": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ActionType",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "action",
+        "number": 1,
+        "package": "pkg_test_a",
+        "size": 1,
+        "size_option": null,
+        "source_file": "pkg_test_a.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "pkg_test_a",
+        "type_ref": {
+         "message": null,
+         "name": "ActionType",
+         "package": "pkg_test_a",
+         "ref": "enum"
+        }
+       },
+       "description": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 64,
+        "name": "description",
+        "number": 3,
+        "package": "pkg_test_a",
+        "size": 65,
+        "size_option": null,
+        "source_file": "pkg_test_a.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "target_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "target_id",
+        "number": 2,
+        "package": "pkg_test_a",
+        "size": 4,
+        "size_option": null,
+        "source_file": "pkg_test_a.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [],
+      "magic_bytes": [
+       36,
+       71
+      ],
+      "magic_bytes_override": null,
+      "min_size": 70,
+      "name": "ActionMessage",
+      "oneofs": {},
+      "package": "pkg_test_a",
+      "size": 70,
+      "source_file": "pkg_test_a.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "pkg_test_a",
+    "package_id": 2,
+    "package_id_explicit": true,
+    "services": {}
+   },
+   {
+    "consts": {},
+    "enums": {},
+    "file_docs": {
+     "pkg_test_messages.sf": [
+      "// Package test messages that imports common_types and pkg_test_a",
+      "// common_types.proto has no pkgid, so it will inherit pkgid=1 from this file",
+      "// pkg_test_a.proto has its own pkgid=2"
+     ]
+    },
+    "messages": {
+     "CrossPackageMessage": {
+      "_class": "Message",
+      "base_size": 134,
+      "comments": [
+       "// Message using types from pkg_test_a (which has pkgid=2)"
+      ],
+      "default_bytes": {
+       "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "action": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ActionType",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "action",
+        "number": 2,
+        "package": "pkg_test_messages",
+        "size": 1,
+        "size_option": null,
+        "source_file": "pkg_test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "pkg_test_a",
+        "type_ref": {
+         "message": null,
+         "name": "ActionType",
+         "package": "pkg_test_a",
+         "ref": "enum"
+        }
+       },
+       "message_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "message_id",
+        "number": 1,
+        "package": "pkg_test_messages",
+        "size": 4,
+        "size_option": null,
+        "source_file": "pkg_test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "payload": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": 128,
+        "name": "payload",
+        "number": 3,
+        "package": "pkg_test_messages",
+        "size": 129,
+        "size_option": null,
+        "source_file": "pkg_test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 2,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Message using types from pkg_test_a (which has pkgid=2)"
+      ],
+      "magic_bytes": [
+       36,
+       63
+      ],
+      "magic_bytes_override": null,
+      "min_size": 134,
+      "name": "CrossPackageMessage",
+      "oneofs": {},
+      "package": "pkg_test_messages",
+      "size": 134,
+      "source_file": "pkg_test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "PackageTestMessage": {
+      "_class": "Message",
+      "base_size": 45,
+      "comments": [
+       "// Message using types from common_types (which inherits pkgid=1)"
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "created_at": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Timestamp",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "created_at",
+        "number": 1,
+        "package": "pkg_test_messages",
+        "size": 12,
+        "size_option": null,
+        "source_file": "pkg_test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "common_types",
+        "type_ref": {
+         "message": null,
+         "name": "Timestamp",
+         "package": "common_types",
+         "ref": "message"
+        }
+       },
+       "current_status": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "Status",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "current_status",
+        "number": 2,
+        "package": "pkg_test_messages",
+        "size": 1,
+        "size_option": null,
+        "source_file": "pkg_test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "common_types",
+        "type_ref": {
+         "message": null,
+         "name": "Status",
+         "package": "common_types",
+         "ref": "enum"
+        }
+       },
+       "name": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "string",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "name",
+        "number": 3,
+        "package": "pkg_test_messages",
+        "size": 32,
+        "size_option": 32,
+        "source_file": "pkg_test_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 1,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Message using types from common_types (which inherits pkgid=1)"
+      ],
+      "magic_bytes": [
+       211,
+       76
+      ],
+      "magic_bytes_override": null,
+      "min_size": 45,
+      "name": "PackageTestMessage",
+      "oneofs": {},
+      "package": "pkg_test_messages",
+      "size": 45,
+      "source_file": "pkg_test_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "pkg_test_messages",
+    "package_id": 1,
+    "package_id_explicit": true,
+    "services": {}
+   }
+  ],
+  "schema_hash": "fb5bde148a87870cdc901bd40be342e666c735a38ad808d8019de03328c6b020"
+ },
+ "outputs": {
+  "c/common_types.structframe.h": "f1374f20cb5012fdb70ed8426dbd4bc98e190731fca8f5fb0d3a4493674c0081",
+  "c/common_types.tests.h": "154245afe81169fde883f04d297e00b6f4d244b2a0f0e096be38644a11307925",
+  "c/pkg_test_a.structframe.h": "2d281a822c0edc37ab69909275fc4aea6de20cb9cee1ce2e59a1c6ef20653f47",
+  "c/pkg_test_a.tests.h": "906f21da9bf03826258fe69545bffce192148527a9e43d81d9b3f4c5455dffa9",
+  "c/pkg_test_messages.structframe.h": "29de5ca5c48e73d2f22dcc43092081f0487ae1af3df885670ef56c58a3fdf7ec",
+  "c/pkg_test_messages.tests.h": "765eb9f249832f2bfa388afc1b4eb8a5c27e83d88d0be26913cf3c7f0d0ee72c",
+  "c/structframe_all.h": "328dd404dc0f378ab8812c1740df39df2c860d02e56392eba6aebe962335316c",
+  "c/test_roundtrip_common_types.c": "99cd0215a3b23cf2b5755aa06f41e3e8552318ee9823b71b6e9241172abe2add",
+  "c/test_roundtrip_pkg_test_a.c": "4ed1ce54c8e184c87f4e68d3f3a126e36c1d92c83700ad475c944ef2d4b079d6",
+  "c/test_roundtrip_pkg_test_messages.c": "c290c8ed4b55e2a92113b589a8b1c567257ee0985fcbf5095c87ecb0e0b4061f",
+  "cpp/common_types.structframe.hpp": "a39f9a537cd478017ad720b1a87d656bf59290b7a7a7eed9dd7b63beeb32c70c",
+  "cpp/common_types.tests.hpp": "08cbbf137c17523e98c6165e6bfbf6b69c284b8f5aedc009335cb095d43c81bd",
+  "cpp/pkg_test_a.structframe.hpp": "aca942a66e320e5955c65231d5f67bb1d37256b881db4bcfbd54b4e348280bab",
+  "cpp/pkg_test_a.tests.hpp": "dd74e2300f02f4cd34cc28d2056e07ddf112e7f947d111475c4bb0f3cb9945e5",
+  "cpp/pkg_test_messages.structframe.hpp": "cadc5094609f8b24bcf666dcbad4fb33dcb6e2f6cc015bf9a4307181b1a53848",
+  "cpp/pkg_test_messages.tests.hpp": "9dd6162d924fe8fb06533a6f51371961109aa0eb6aa07de6b64dd67c2007b77f",
+  "cpp/structframe_all.hpp": "20405134cdc5686ec52d548bce611b9e979d2043e018a765fe0ffd49918d0829",
+  "cpp/test_roundtrip_common_types.cpp": "4f294bd264cce5cca1935bb292ad6be0eb346db0e28c01544dd86bc9693e6589",
+  "cpp/test_roundtrip_pkg_test_a.cpp": "3273eb232c9cd90c73e411a5885395f4ca9e4a642b69f4f36658c26102f2185d",
+  "cpp/test_roundtrip_pkg_test_messages.cpp": "a8100a67485076fbb0502ef8c6f721c673d850832efc065c10c153ac23298f06",
+  "csharp/CommonTypes/Constants.cs": "1ecc6e5df64112e2d83e5285bc6c6ca4f19b615246eff0b8c226af7a86c7e3c1",
+  "csharp/CommonTypes/Enums/Status.cs": "6e96d8a0f0b66d8c126fb57c2c12acab6e9ceea1a6c037d3c93d803c7b939ddb",
+  "csharp/CommonTypes/MessageDefinitions.cs": "7ca340c221397b58519d3fab003c0ebd3a443dca1ca8a3f2072092727d16ba39",
+  "csharp/CommonTypes/Messages/Timestamp.cs": "71e6dd06048ea5646fe19d04a663ffbece08a05ecbc4105e03fcca054b80884d",
+  "csharp/CommonTypes/PackageInfo.cs": "040131a6af9bbcc138339ef61ca8420fb4a86ae49df9c912b740335215975d04",
+  "csharp/CommonTypes/SdkInterface.cs": "d31a4b29d8b69a90f6f5f5d8805ce98429dc9ba343e4a966415aadaf79094c8b",
+  "csharp/CommonTypes/test_roundtrip_common_types.cs": "5e18209dcc6521bc485ed3f5a9558ff4ccf98492726d55208065b1b2801b09d5",
+  "csharp/PkgTestA/Constants.cs": "1d85e614d7abafba4c05bcc361388d7656222ca0002251bc0385cc26c83461ac",
+  "csharp/PkgTestA/Enums/ActionType.cs": "4130a61116db1280a644059d6b9cac9dd98984a65eebac171a1acb9c14e6fcca",
+  "csharp/PkgTestA/MessageDefinitions.cs": "aeee696de4f24f70b00b9e023b104f65f0d1480a3832f3d3f7abfec78b644789",
+  "csharp/PkgTestA/Messages/ActionMessage.cs": "9b06bcfaa0177bed8072f5f59514371bf2b3aa7a27c7383c2b06e5b984a1fbf2",
+  "csharp/PkgTestA/PackageInfo.cs": "03dab8e3541f9d08e7a271b9babb3102f2ac9d86a536e0f48edcf82c9ee0e71a",
+  "csharp/PkgTestA/SdkInterface.cs": "cceb07065734575f5fff26f3364b2379c73f4eb0f4ed710ee1857fd36bfb39b9",
+  "csharp/PkgTestA/test_roundtrip_pkg_test_a.cs": "c5d926b92e0e396102e23bae0e5b0f362638eeba9532308b49f1a8d31a8dd9fb",
+  "csharp/PkgTestMessages/Constants.cs": "5e0a8e93eb0d7a5f9a3f7ee18424a931edf99ee5cab0dad55f9fd7b2c9e2a52b",
+  "csharp/PkgTestMessages/MessageDefinitions.cs": "4b34ee5555f0bf4268e5d4f484579ef9b6f781e37cb7c8b6e680f76349508a75",
+  "csharp/PkgTestMessages/Messages/CrossPackageMessage.cs": "a33150018ceb85d455b5e63a9b2ceb1a518e50d9d89acfc467b316e124aac7f3",
+  "csharp/PkgTestMessages/Messages/PackageTestMessage.cs": "4bce678e3651acd89257f4f90c2cb7d34777c6678bdd7ab1ba4a14b4557f34fd",
+  "csharp/PkgTestMessages/PackageInfo.cs": "fc84234a74f32a84e5cbbfc0221ee204d409530d5cd78825d49615fca814d941",
+  "csharp/PkgTestMessages/SdkInterface.cs": "fce8864d6e3681f4ad6f8ee7913b2f447ad6a9a4545716334ab2c35ba2a1fc59",
+  "csharp/PkgTestMessages/test_roundtrip_pkg_test_messages.cs": "c54127342f422e780a298c6532015f40fb691a0f28d0a6f0313f8a45929059de",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/common_types.graphql": "cdb4acab2ab45a00302f9f6142e9ce965992acb8d9893632d110578296cea3b3",
+  "gql/pkg_test_a.graphql": "8d3e434f3326cf93c11f707f652dfa59ecbfd6d2f09215394b32c44314d9bd24",
+  "gql/pkg_test_messages.graphql": "6d2584500852a2fb83890ae044f1f2bfdcb63e180c93cefb1ce0d5f50598fe1b",
+  "gql/schema.graphql": "4f0c4f5fc777b4086f38e69bbc61ca6f769fb6a4be6871e4143dddec108dd2c5",
+  "js/common-types.structframe.js": "d2141fa8aa65fcaaa1c0895495d62e922a6ab2e51439a5c2cc9996cfc790a283",
+  "js/pkg-test-a.structframe.js": "ed23d19aaad287dd809207ee7e60f6781b64d0f975a972013cd26c5b8dede3fc",
+  "js/pkg-test-messages.structframe.js": "5159f0bb471c8b12c01c8ecba71db778bca8da6749e3d2b0ca02a32224871d6c",
+  "js/test_roundtrip_common_types.js": "54144d434b9f7ece03686269a752071f08c8bf3d8d158e93db7d940968e9f6b4",
+  "js/test_roundtrip_pkg_test_a.js": "8ab6208d1e6bfb2aa5e198db0038560438ce674320c2cb58e4c619ff462b620c",
+  "js/test_roundtrip_pkg_test_messages.js": "ba3bf7fa559764ac56e623692b4d4b14d8d45e69567058bfec332af3d30dd1d6",
+  "py/structframe/common_types.py": "786abfdc7ab8627fa5546b2d0f1567a6f7eb3b9019ca395718a925c44ff9c34d",
+  "py/structframe/common_types_tests.py": "b59f539758c1cd36cfa23f190bbc48cec6ef027a89c583e47a5109ba46648aba",
+  "py/structframe/pkg_test_a.py": "b1a2fd14747a863d532ccd4b27634b289368062c396a486d4974e95318629ea2",
+  "py/structframe/pkg_test_a_tests.py": "4c0d86f92e2e799666dc6901df40358cbf01b7c2a2500f75e50ea286709f4be1",
+  "py/structframe/pkg_test_messages.py": "805072de6e70616c8cbe7305f62b4e02a43ef6df61d46072a46d8a28bbfd40ae",
+  "py/structframe/pkg_test_messages_tests.py": "7090b97dc200942dcb47e42ca8565c3e4ad08d4df39a688567931ab132ec7482",
+  "py/test_roundtrip_common_types.py": "a6769c9ec935ef970af68703b5259c5ee09fc27cfc5dda60c677566b2fcddeeb",
+  "py/test_roundtrip_pkg_test_a.py": "3b06ac86c954909d672d780319013c045e8cd268dade3d6999d452a03517b749",
+  "py/test_roundtrip_pkg_test_messages.py": "9a4ae559966ac04f50adec19fda012c154f834b4d62a207780cc606f2b5319fc",
+  "rust/Cargo.toml": "774a5635d1513d3113ad742bceaec719487cca7dc482a9d45977b6b5fb62fbb6",
+  "rust/common_types.structframe.rs": "ae08dd28e60205bfc458ca60c8bc34237f5fbb351a3bb10634424f8c1e822fef",
+  "rust/pkg_test_a.structframe.rs": "df86ab7ba80452bd02eddb05966246378713d4f377693e2fe6f07780a6d6e7bc",
+  "rust/pkg_test_messages.structframe.rs": "f4e99f5e2272001630126c31726833fcb24aa9a286b61c884677caade548bd6e",
+  "rust/test_roundtrip_common_types.rs": "5d731565141e56587488d99827653363ca098f17f0891e264253f10235f0fc26",
+  "rust/test_roundtrip_pkg_test_a.rs": "295ec892a7d8bd7954cbc8f1006291bf318bca5a2dbb9e8c38ad4257718bed3d",
+  "rust/test_roundtrip_pkg_test_messages.rs": "a3bb13cbe933076428a7de1400dc7299e81ec60ac05f56ff5579d1a97185d41b",
+  "sf_compile.json": "370f36f710d56d87ee18436921591bd10ce408455b1a6424d7187ab0f3667dc9",
+  "ts/common-types.structframe.ts": "5ed0b527c44d22c2b910036637d5244d0dd3b497b14f84f6ff2d8cb0b7ca8e94",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/pkg-test-a.structframe.ts": "f7410f1da580154807e906ff7c8c41eba25b2f0f0b40dd307a3dd506ac163535",
+  "ts/pkg-test-messages.structframe.ts": "74d0e1debc9cfcd85e6b67b832ed582d92f79a675b3c836fe74dbf49f78b3a74",
+  "ts/test_roundtrip_common_types.ts": "8ce2f0caaa63d5c96f10eca9fec44ee351196cab814b70f12eb3952d0288abf0",
+  "ts/test_roundtrip_pkg_test_a.ts": "cef883aa8da0f413a63c7a7da2ca191d87314e33796f47bf0482769db06b12c7",
+  "ts/test_roundtrip_pkg_test_messages.ts": "15d3ebc887a91f6b3c5553a1ffb4dfba4c13525e9567a7318bd1dab70231794a"
+ },
+ "outputs_no_packed": {
+  "c/common_types.structframe.h": "ec3cfed8420985e6be972c51a2bd635d16c294b31bbf8329be6746aa52fddb7c",
+  "c/common_types.tests.h": "154245afe81169fde883f04d297e00b6f4d244b2a0f0e096be38644a11307925",
+  "c/pkg_test_a.structframe.h": "0dad1ce26ca3a7eeb4e73375c4adfc7fc290f875f81829aa2133e6f7afc28850",
+  "c/pkg_test_a.tests.h": "906f21da9bf03826258fe69545bffce192148527a9e43d81d9b3f4c5455dffa9",
+  "c/pkg_test_messages.structframe.h": "789a9f81546cd8cd5554a0813ebe13f6611db9f1cb5f2be8f065229410f28f1b",
+  "c/pkg_test_messages.tests.h": "765eb9f249832f2bfa388afc1b4eb8a5c27e83d88d0be26913cf3c7f0d0ee72c",
+  "c/structframe_all.h": "328dd404dc0f378ab8812c1740df39df2c860d02e56392eba6aebe962335316c",
+  "c/test_roundtrip_common_types.c": "99cd0215a3b23cf2b5755aa06f41e3e8552318ee9823b71b6e9241172abe2add",
+  "c/test_roundtrip_pkg_test_a.c": "4ed1ce54c8e184c87f4e68d3f3a126e36c1d92c83700ad475c944ef2d4b079d6",
+  "c/test_roundtrip_pkg_test_messages.c": "c290c8ed4b55e2a92113b589a8b1c567257ee0985fcbf5095c87ecb0e0b4061f",
+  "cpp/common_types.structframe.hpp": "0ff2f201d932e6afa1f0054e9449c6a91825995959d3e7d462a24b08e04d1954",
+  "cpp/common_types.tests.hpp": "08cbbf137c17523e98c6165e6bfbf6b69c284b8f5aedc009335cb095d43c81bd",
+  "cpp/pkg_test_a.structframe.hpp": "93f571432735f428d906171b5a3d92ac69509f1a5f7e7431599ed073cb3ad52f",
+  "cpp/pkg_test_a.tests.hpp": "dd74e2300f02f4cd34cc28d2056e07ddf112e7f947d111475c4bb0f3cb9945e5",
+  "cpp/pkg_test_messages.structframe.hpp": "e5abbc992edd2e891a500c96ae5ba944afce57265e47b782110c5b90225bbb72",
+  "cpp/pkg_test_messages.tests.hpp": "9dd6162d924fe8fb06533a6f51371961109aa0eb6aa07de6b64dd67c2007b77f",
+  "cpp/structframe_all.hpp": "20405134cdc5686ec52d548bce611b9e979d2043e018a765fe0ffd49918d0829",
+  "cpp/test_roundtrip_common_types.cpp": "4f294bd264cce5cca1935bb292ad6be0eb346db0e28c01544dd86bc9693e6589",
+  "cpp/test_roundtrip_pkg_test_a.cpp": "3273eb232c9cd90c73e411a5885395f4ca9e4a642b69f4f36658c26102f2185d",
+  "cpp/test_roundtrip_pkg_test_messages.cpp": "a8100a67485076fbb0502ef8c6f721c673d850832efc065c10c153ac23298f06",
+  "csharp/CommonTypes/Constants.cs": "a03d4deeddcbfe9587f3fab3c07c2eebfe8b30dcdeee6b6550f097e70fd976d2",
+  "csharp/CommonTypes/Enums/Status.cs": "6e96d8a0f0b66d8c126fb57c2c12acab6e9ceea1a6c037d3c93d803c7b939ddb",
+  "csharp/CommonTypes/MessageDefinitions.cs": "7ca340c221397b58519d3fab003c0ebd3a443dca1ca8a3f2072092727d16ba39",
+  "csharp/CommonTypes/Messages/Timestamp.cs": "327b3d1f83fc9e751ac36cb3b0b3b99c463765d214f8512f1da4bbd342f9e3b1",
+  "csharp/CommonTypes/PackageInfo.cs": "040131a6af9bbcc138339ef61ca8420fb4a86ae49df9c912b740335215975d04",
+  "csharp/CommonTypes/SdkInterface.cs": "d31a4b29d8b69a90f6f5f5d8805ce98429dc9ba343e4a966415aadaf79094c8b",
+  "csharp/CommonTypes/test_roundtrip_common_types.cs": "5e18209dcc6521bc485ed3f5a9558ff4ccf98492726d55208065b1b2801b09d5",
+  "csharp/PkgTestA/Constants.cs": "1e79c4977e99e6c3caa00dc4da7e77fdef499f36d2df7660a3a37b9e25da76c6",
+  "csharp/PkgTestA/Enums/ActionType.cs": "4130a61116db1280a644059d6b9cac9dd98984a65eebac171a1acb9c14e6fcca",
+  "csharp/PkgTestA/MessageDefinitions.cs": "e7eddff0d0530332c39b46c70e574257f7558651cdcaa172b174cdbaabaa3d41",
+  "csharp/PkgTestA/Messages/ActionMessage.cs": "59ef253f9a10e724b8077ef2566987e32c71e31dc572e42fab6303ede2f486b4",
+  "csharp/PkgTestA/PackageInfo.cs": "03dab8e3541f9d08e7a271b9babb3102f2ac9d86a536e0f48edcf82c9ee0e71a",
+  "csharp/PkgTestA/SdkInterface.cs": "cceb07065734575f5fff26f3364b2379c73f4eb0f4ed710ee1857fd36bfb39b9",
+  "csharp/PkgTestA/test_roundtrip_pkg_test_a.cs": "c5d926b92e0e396102e23bae0e5b0f362638eeba9532308b49f1a8d31a8dd9fb",
+  "csharp/PkgTestMessages/Constants.cs": "6b6a91a09c9e6bb46f5282e1903e0c3feea0348591f7f0504ae9e27ddb4a36f0",
+  "csharp/PkgTestMessages/MessageDefinitions.cs": "a615c340498c387c96d47baea51af11b2d1c252a7bc35b4decb04c57db086f74",
+  "csharp/PkgTestMessages/Messages/CrossPackageMessage.cs": "9616302c9358c60aad50844ec4eeab8c22a759ed3cd8c2f5f16dcc517e12a59d",
+  "csharp/PkgTestMessages/Messages/PackageTestMessage.cs": "e0911f187aa99daea8203e2031357cf8359e1805f19595b806588ceea0f4a4e9",
+  "csharp/PkgTestMessages/PackageInfo.cs": "fc84234a74f32a84e5cbbfc0221ee204d409530d5cd78825d49615fca814d941",
+  "csharp/PkgTestMessages/SdkInterface.cs": "fce8864d6e3681f4ad6f8ee7913b2f447ad6a9a4545716334ab2c35ba2a1fc59",
+  "csharp/PkgTestMessages/test_roundtrip_pkg_test_messages.cs": "c54127342f422e780a298c6532015f40fb691a0f28d0a6f0313f8a45929059de",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/common_types.graphql": "cdb4acab2ab45a00302f9f6142e9ce965992acb8d9893632d110578296cea3b3",
+  "gql/pkg_test_a.graphql": "8d3e434f3326cf93c11f707f652dfa59ecbfd6d2f09215394b32c44314d9bd24",
+  "gql/pkg_test_messages.graphql": "6d2584500852a2fb83890ae044f1f2bfdcb63e180c93cefb1ce0d5f50598fe1b",
+  "gql/schema.graphql": "4f0c4f5fc777b4086f38e69bbc61ca6f769fb6a4be6871e4143dddec108dd2c5",
+  "js/common-types.structframe.js": "72bc8d30957136b49d9483594a069307233e402f857a6f84eab6cefdd027d9e7",
+  "js/pkg-test-a.structframe.js": "95f3d29bd64696ee98d430be23379e4878fe4da882381a903f759e8ad070c847",
+  "js/pkg-test-messages.structframe.js": "00de44a5aaa14e9e0d9b5c3b13570a98637b26846e0297b8b8d90de5eb600d9e",
+  "js/test_roundtrip_common_types.js": "54144d434b9f7ece03686269a752071f08c8bf3d8d158e93db7d940968e9f6b4",
+  "js/test_roundtrip_pkg_test_a.js": "8ab6208d1e6bfb2aa5e198db0038560438ce674320c2cb58e4c619ff462b620c",
+  "js/test_roundtrip_pkg_test_messages.js": "ba3bf7fa559764ac56e623692b4d4b14d8d45e69567058bfec332af3d30dd1d6",
+  "py/structframe/common_types.py": "9d3f517c22f2eb2cb704cba43274537df2ad21803033960a4f39ad5cbca2ccd8",
+  "py/structframe/common_types_tests.py": "b59f539758c1cd36cfa23f190bbc48cec6ef027a89c583e47a5109ba46648aba",
+  "py/structframe/pkg_test_a.py": "5a0572e7a0c05e8af13f94721a3d2ef6a40d1f05faf033c0a96bc7344f4cd603",
+  "py/structframe/pkg_test_a_tests.py": "4c0d86f92e2e799666dc6901df40358cbf01b7c2a2500f75e50ea286709f4be1",
+  "py/structframe/pkg_test_messages.py": "acc2fe97778394112b37a6ef7a0f9840be46b7bb23414cac5463ef3426e328f2",
+  "py/structframe/pkg_test_messages_tests.py": "7090b97dc200942dcb47e42ca8565c3e4ad08d4df39a688567931ab132ec7482",
+  "py/test_roundtrip_common_types.py": "a6769c9ec935ef970af68703b5259c5ee09fc27cfc5dda60c677566b2fcddeeb",
+  "py/test_roundtrip_pkg_test_a.py": "3b06ac86c954909d672d780319013c045e8cd268dade3d6999d452a03517b749",
+  "py/test_roundtrip_pkg_test_messages.py": "9a4ae559966ac04f50adec19fda012c154f834b4d62a207780cc606f2b5319fc",
+  "rust/Cargo.toml": "774a5635d1513d3113ad742bceaec719487cca7dc482a9d45977b6b5fb62fbb6",
+  "rust/common_types.structframe.rs": "508845ac303e6d91d7e75934279247c641dffc3a0af9cf1eb97f861afcadbebb",
+  "rust/pkg_test_a.structframe.rs": "cbfebe520461c01b5ee0813f94b04215a1f0d8215e06167c11dae14a9034c37d",
+  "rust/pkg_test_messages.structframe.rs": "69fa9ab861ce1063392972b0281103feb2c68c9b0baaf86b2487f1ce48683976",
+  "rust/test_roundtrip_common_types.rs": "5d731565141e56587488d99827653363ca098f17f0891e264253f10235f0fc26",
+  "rust/test_roundtrip_pkg_test_a.rs": "295ec892a7d8bd7954cbc8f1006291bf318bca5a2dbb9e8c38ad4257718bed3d",
+  "rust/test_roundtrip_pkg_test_messages.rs": "a3bb13cbe933076428a7de1400dc7299e81ec60ac05f56ff5579d1a97185d41b",
+  "sf_compile.json": "481e6790644534b29f673d150cc27b9768fc51289a57c4e7b033852ce7e2a1ea",
+  "ts/common-types.structframe.ts": "c153c6763b9a58922faacf38256ad81c17cadd41160f618fdfbdea0bb5baacd9",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/pkg-test-a.structframe.ts": "c50288ce0cee162eb5b41397b82e28b8d81b239708c0d1571ae0eae25c86553d",
+  "ts/pkg-test-messages.structframe.ts": "bb861455224ed2ccba37947ccfb719513985de089811e67b173403a73aa1a10e",
+  "ts/test_roundtrip_common_types.ts": "8ce2f0caaa63d5c96f10eca9fec44ee351196cab814b70f12eb3952d0288abf0",
+  "ts/test_roundtrip_pkg_test_a.ts": "cef883aa8da0f413a63c7a7da2ca191d87314e33796f47bf0482769db06b12c7",
+  "ts/test_roundtrip_pkg_test_messages.ts": "15d3ebc887a91f6b3c5553a1ffb4dfba4c13525e9567a7318bd1dab70231794a"
+ },
+ "schema": "tests/proto/pkg_test_messages.sf"
+}

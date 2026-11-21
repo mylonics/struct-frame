@@ -1,0 +1,27 @@
+// Package ID 2. msgid 1 here does not clash with sensor_data's msgid 1,
+// because the package id is part of the wire id.
+package actuator_control;
+
+option pkgid = 2;
+
+enum ActuatorState {
+  IDLE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+  CALIBRATING = 3;
+}
+
+message ActuatorCommand {
+  option msgid = 1;                  // wire id (2 << 8) | 1 = 513
+  string actuator_id = 1 [size=16];
+  ActuatorState desired_state = 2;
+  float target_value = 3;
+}
+
+message ActuatorStatus {
+  option msgid = 2;                  // wire id (2 << 8) | 2 = 514
+  string actuator_id = 1 [size=16];
+  ActuatorState current_state = 2;
+  float current_value = 3;
+  float power_consumption = 4;
+}

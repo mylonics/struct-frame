@@ -90,19 +90,23 @@ def test_changed_proto_invalidates_hash():
 
         # Start with a minimal proto
         proto_v1 = (
-            "package cache_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1;\n"
-            "}\n"
+            """\
+package cache_test;
+
+message MsgA @1 {
+  uint32 value;
+}
+"""
         )
         proto_v2 = (
-            "package cache_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1;\n"
-            "  uint32 extra = 2;\n"  # new field
-            "}\n"
+            """\
+package cache_test;
+
+message MsgA @1 {
+  uint32 value;
+  uint32 extra;
+}
+"""
         )
         proto_copy = tmp_path / "cache_test.sf"
         proto_copy.write_text(proto_v1, encoding="utf-8")
@@ -135,18 +139,22 @@ def test_changed_default_value_invalidates_hash():
         out = tmp_path / "gen"
 
         proto_v1 = (
-            "package default_hash_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 retry_ms = 1 [default = 1000];\n"
-            "}\n"
+            """\
+package default_hash_test;
+
+message MsgA @1 {
+  uint32 retry_ms = 1000;
+}
+"""
         )
         proto_v2 = (
-            "package default_hash_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 retry_ms = 1 [default = 2000];\n"
-            "}\n"
+            """\
+package default_hash_test;
+
+message MsgA @1 {
+  uint32 retry_ms = 2000;
+}
+"""
         )
         proto_copy = tmp_path / "default_hash_test.sf"
         proto_copy.write_text(proto_v1, encoding="utf-8")
@@ -175,18 +183,22 @@ def test_default_vs_no_default_hash_differs_but_deterministic():
         tmp_path = Path(tmp)
 
         proto_no_default = (
-            "package default_hash_determinism_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1;\n"
-            "}\n"
+            """\
+package default_hash_determinism_test;
+
+message MsgA @1 {
+  uint32 value;
+}
+"""
         )
         proto_with_default = (
-            "package default_hash_determinism_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1 [default = 5];\n"
-            "}\n"
+            """\
+package default_hash_determinism_test;
+
+message MsgA @1 {
+  uint32 value = 5;
+}
+"""
         )
 
         out_a = tmp_path / "gen_a"
@@ -253,12 +265,14 @@ def test_changed_leading_comment_invalidates_hash():
     'no changes detected' and leave the generated docs stale."""
     with tempfile.TemporaryDirectory() as tmp:
         v1 = (
-            "package doc_cache_test;\n"
-            "// Original message docs\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1;\n"
-            "}\n"
+            """\
+package doc_cache_test;
+
+/// Original message docs
+message MsgA @1 {
+  uint32 value;
+}
+"""
         )
         v2 = v1.replace("Original message docs", "Updated message docs")
         before, after = _assert_regenerates(Path(tmp), v1, v2, "a leading comment")
@@ -271,11 +285,13 @@ def test_changed_trailing_comment_invalidates_hash():
     """Trailing (same-line) comments document the preceding field and are cached too."""
     with tempfile.TemporaryDirectory() as tmp:
         v1 = (
-            "package doc_cache_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1; // Counts widgets\n"
-            "}\n"
+            """\
+package doc_cache_test;
+
+message MsgA @1 {
+  uint32 value;  /// Counts widgets
+}
+"""
         )
         v2 = v1.replace("Counts widgets", "Counts gadgets")
         before, after = _assert_regenerates(Path(tmp), v1, v2, "a trailing comment")
@@ -287,12 +303,15 @@ def test_changed_file_header_comment_invalidates_hash():
     """File-level docs (comments before the package statement) are cached too."""
     with tempfile.TemporaryDirectory() as tmp:
         v1 = (
-            "// Header describing the file\n"
-            "package doc_cache_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1;\n"
-            "}\n"
+            """\
+/// Header describing the file
+
+package doc_cache_test;
+
+message MsgA @1 {
+  uint32 value;
+}
+"""
         )
         v2 = v1.replace("describing the file", "describing the module")
         before, after = _assert_regenerates(Path(tmp), v1, v2, "a file header comment")
@@ -307,19 +326,27 @@ def test_unchanged_comments_still_skip():
         out = tmp_path / "gen"
         proto = tmp_path / "doc_cache_test.sf"
         v1 = (
-            "package doc_cache_test;\n"
-            "// Docs\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 value = 1;\n"
-            "}\n"
+            """\
+package doc_cache_test;
+
+/// Docs
+message MsgA @1 {
+  uint32 value;
+}
+"""
         )
         code, output, _ = _generate(proto, out, v1, force=True)
         _check(code == 0, f"First generation should succeed:\n{output}")
-        code, output, _ = _generate(proto, out, v1.replace("{\n  option", "{\n\n\n  option"))
+        code, output, _ = _generate(proto, out, v1.replace("{\n  uint32", "{\n\n\n  uint32"))
         _check(code == 0, f"Second generation should succeed:\n{output}")
         _check("no changes detected" in output.lower(),
                f"Formatting-only edits should be skipped, got:\n{output}")
+
+
+def _swap(text, old, new):
+    """Replace *old* (which must be present) by *new*."""
+    _check(old in text, f"test bug: {old!r} not in schema")
+    return text.replace(old, new, 1)
 
 
 def test_field_order_change_invalidates_hash():
@@ -327,14 +354,16 @@ def test_field_order_change_invalidates_hash():
     changes the generated layout/accessors, so it must invalidate the cache."""
     with tempfile.TemporaryDirectory() as tmp:
         v1 = (
-            "package doc_cache_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  uint32 first = 1;\n"
-            "  uint32 second = 2;\n"
-            "}\n"
+            """\
+package doc_cache_test;
+
+message MsgA @1 {
+  uint32 first;
+  uint32 second;
+}
+"""
         )
-        v2 = v1.replace("first = 1;\n  uint32 second = 2;", "second = 1;\n  uint32 first = 2;")
+        v2 = _swap(v1, "uint32 first;\n  uint32 second;", "uint32 second;\n  uint32 first;")
         _assert_regenerates(Path(tmp), v1, v2, "field order")
 
 
@@ -342,25 +371,27 @@ def test_oneof_variant_order_change_invalidates_hash():
     """Oneof variant order is significant (field_order discriminators)."""
     with tempfile.TemporaryDirectory() as tmp:
         v1 = (
-            "package doc_cache_test;\n"
-            "message MsgA {\n"
-            "  option msgid = 1;\n"
-            "  oneof payload {\n"
-            "    uint32 alpha = 1;\n"
-            "    uint32 beta = 2;\n"
-            "  }\n"
-            "}\n"
+            """\
+package doc_cache_test;
+
+message MsgA @1 {
+  oneof payload {
+    uint32 alpha;
+    uint32 beta;
+  }
+}
+"""
         )
-        v2 = v1.replace("uint32 alpha = 1;\n    uint32 beta = 2;", "uint32 beta = 1;\n    uint32 alpha = 2;")
+        v2 = _swap(v1, "uint32 alpha;\n    uint32 beta;", "uint32 beta;\n    uint32 alpha;")
         _assert_regenerates(Path(tmp), v1, v2, "oneof variant order")
 
 
 def test_oneof_declaration_order_change_invalidates_hash():
     """Oneofs are laid out in declaration order, so swapping them changes the wire."""
     with tempfile.TemporaryDirectory() as tmp:
-        one = "  oneof first { option discriminator = field_order; uint8 a = 1; }\n"
-        two = "  oneof second { option discriminator = field_order; uint32 c = 1; }\n"
-        head = "package doc_cache_test;\nmessage M {\n  option msgid = 1;\n  option variable = true;\n"
+        one = "  oneof first [discriminator = field_order] { uint8 a; }\n"
+        two = "  oneof second [discriminator = field_order] { uint32 c; }\n"
+        head = "package doc_cache_test;\nmessage M @1 [variable] {\n"
         _assert_regenerates(Path(tmp), head + one + two + "}\n", head + two + one + "}\n",
                             "oneof declaration order")
 

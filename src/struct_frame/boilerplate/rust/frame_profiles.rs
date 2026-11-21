@@ -11,6 +11,7 @@ use crate::payload_types::{
     PayloadConfig, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
     PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG, PAYLOAD_MINIMAL_CONFIG,
 };
+use crate::system_frames;
 
 /// Profile configuration - combines a HeaderConfig with a PayloadConfig.
 #[derive(Debug, Clone, Copy)]
@@ -809,11 +810,19 @@ pub struct BufferReader {
     config: ProfileConfig,
     data: Vec<u8>,
     offset: usize,
+    /// System-frame profile (Basic/Tiny headers only).
+    sys: Option<ProfileConfig>,
+    deliver_system_frames: bool,
 }
 
 impl BufferReader {
     pub fn new(config: ProfileConfig, data: Vec<u8>) -> Self {
-        BufferReader { config, data, offset: 0 }
+        BufferReader { config, data, offset: 0, sys: system_frames::config_for(&config), deliver_system_frames: false }
+    }
+
+    /// Return system frames (`is_system`) from `next()` instead of skipping them.
+    pub fn set_deliver_system_frames(&mut self, deliver: bool) {
+        self.deliver_system_frames = deliver;
     }
 
     /// Get the next frame event from the buffer.
@@ -829,11 +838,23 @@ impl BufferReader {
     ///       if f.valid { handle(f); } // else CrcFailure or SyncRecovery
     ///   }
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        loop {
+            let result = self.next_event(get_message_info)?;
+            if result.valid && result.is_system && !self.deliver_system_frames {
+                continue;
+            }
+            return Some(result);
+        }
+    }
+
+    fn next_event(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
         if self.offset >= self.data.len() {
             return None;
         }
         let remaining = &self.data[self.offset..];
-        let result = if self.config.payload.has_crc {
+        let result = if system_frames::is_system_start(self.sys.as_ref(), remaining) {
+            system_frames::parse(self.sys.as_ref().unwrap(), remaining)
+        } else if self.config.payload.has_crc {
             parse_with_crc(&self.config, remaining, get_message_info)
         } else {
             parse_minimal(&self.config, remaining, get_message_info)
@@ -871,8 +892,17 @@ impl BufferReader {
         self.next(get_message_info)
     }
 
-    /// Find the offset of the next possible start-byte sequence within `buf` starting at index 1.
+    /// Find the offset of the next possible start-byte sequence within `buf` starting at index 1
+    /// (an application frame or a system frame).
     fn find_next_start_byte_offset(&self, buf: &[u8]) -> usize {
+        let user = self.find_next_user_start_offset(buf);
+        match system_frames::next_start(self.sys.as_ref(), buf, 1) {
+            Some(p) if p < user => p,
+            _ => user,
+        }
+    }
+
+    fn find_next_user_start_offset(&self, buf: &[u8]) -> usize {
         match self.config.header.header_type {
             HeaderType::None => 1,
             HeaderType::Tiny => {
@@ -933,6 +963,11 @@ pub struct AccumulatingReader {
     partial_pending: bool,
     /// Message-info function used by `frames()`, `next_frame()` and `push()`.
     message_info: Option<MessageInfoFn>,
+    /// System-frame profile (Basic/Tiny headers only). System frames are counted and skipped
+    /// unless `deliver_system_frames`; their sequence numbers are tracked separately.
+    sys: Option<ProfileConfig>,
+    deliver_system_frames: bool,
+    last_sys_seq: Option<u8>,
 }
 
 /// Iterator over the frames buffered in an `AccumulatingReader`; see `AccumulatingReader::frames`.
@@ -959,7 +994,16 @@ impl AccumulatingReader {
             last_seq: None,
             partial_pending: false,
             message_info: None,
+            sys: system_frames::config_for(&config),
+            deliver_system_frames: false,
+            last_sys_seq: None,
         }
+    }
+
+    /// Return system frames (`is_system`) from `next()`/`push_byte()` instead of only counting
+    /// them (`cnt_system_frames`). Profiles without start bytes never carry system frames.
+    pub fn set_deliver_system_frames(&mut self, deliver: bool) {
+        self.deliver_system_frames = deliver;
     }
 
     /// A reader that remembers the message-info function (normally the generated
@@ -1105,6 +1149,10 @@ impl AccumulatingReader {
                     .map(|p| p + 1)
                     .unwrap_or(buf.len())
             }
+        };
+        let drain = match system_frames::next_start(self.sys.as_ref(), buf, 1) {
+            Some(p) if p < drain => p,
+            _ => drain,
         }
         .max(1);
 
@@ -1124,8 +1172,12 @@ impl AccumulatingReader {
     /// such a claim. The caller resyncs immediately, as a byte-by-byte parser would, instead of
     /// waiting for the buffer to fill with good data behind the bogus header.
     fn claims_oversize_frame(&self) -> bool {
-        let cfg = &self.config;
         let buf = self.buf();
+        let cfg = if system_frames::is_system_start(self.sys.as_ref(), buf) {
+            self.sys.as_ref().unwrap()
+        } else {
+            &self.config
+        };
         if !cfg.payload.has_length || buf.len() < cfg.header_size() {
             return false;
         }
@@ -1205,8 +1257,20 @@ impl AccumulatingReader {
     }
 
     /// Returns the number of bytes to drain to re-align the buffer to the next
-    /// possible start-byte position (0 means "wait for more data").
+    /// possible start-byte position (0 means "wait for more data"). A system-frame start
+    /// counts as a start position too.
     fn bytes_to_drain_for_resync(&self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> usize {
+        let n = self.bytes_to_drain_for_user_resync(get_message_info);
+        if n == 0 {
+            return 0;
+        }
+        match system_frames::next_start(self.sys.as_ref(), self.buf(), 1) {
+            Some(p) if p < n => p,
+            _ => n,
+        }
+    }
+
+    fn bytes_to_drain_for_user_resync(&self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> usize {
         let buf = self.buf();
         if buf.is_empty() {
             return 0;
@@ -1407,7 +1471,8 @@ impl AccumulatingReader {
         // parse_with_status's normal resync logic (below) takes over as before.
         let fresh_start = self.buf().is_empty();
         let mismatched_start = self.config.header.num_start_bytes >= 1
-            && byte != self.config.computed_start_byte1();
+            && byte != self.config.computed_start_byte1()
+            && self.sys.map_or(true, |s| byte != s.computed_start_byte1());
         self.add_data(&[byte]);
         if fresh_start && mismatched_start {
             let mut r = FrameMsgInfo::invalid();
@@ -1415,18 +1480,106 @@ impl AccumulatingReader {
             r.diagnostics = Some(self.diagnostics);
             return Some(r);
         }
-        Some(self.parse_with_status(get_message_info))
+        let result = self.parse_with_status(get_message_info);
+        if result.valid && result.is_system && !self.deliver_system_frames {
+            let mut r = FrameMsgInfo::invalid();
+            r.status = FrameMsgStatus::WaitingForStart;
+            r.diagnostics = Some(self.diagnostics);
+            return Some(r);
+        }
+        Some(result)
     }
 
     /// Get the next complete frame, or None if not enough data yet.
     /// Automatically re-synchronizes past noise or partial frames.
+    /// System frames are returned (`is_system`) only after `set_deliver_system_frames(true)`;
+    /// otherwise they are counted (`cnt_system_frames`) and skipped.
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
-        let result = self.parse_with_status(get_message_info);
-        if result.valid || result.frame_size > 0 || result.status == FrameMsgStatus::SyncRecovery {
-            Some(result)
-        } else {
-            None
+        loop {
+            let result = self.parse_with_status(get_message_info);
+            if result.valid && result.is_system && !self.deliver_system_frames {
+                continue;
+            }
+            return if result.valid || result.frame_size > 0 || result.status == FrameMsgStatus::SyncRecovery {
+                Some(result)
+            } else {
+                None
+            };
         }
+    }
+
+    /// Offset (>= 1) of the next frame start (application or system) after the buffer head,
+    /// or the buffered length when there is none.
+    fn next_start_after_head(&self) -> usize {
+        let buf = self.buf();
+        let user = match self.config.header.header_type {
+            HeaderType::None => 1,
+            HeaderType::Tiny => {
+                let sb = self.config.computed_start_byte1();
+                buf[1..].iter().position(|&b| b == sb).map(|p| p + 1).unwrap_or(buf.len())
+            }
+            HeaderType::Basic => {
+                let sb2 = self.config.computed_start_byte2();
+                Self::scan_for_basic_start(&buf[1..], sb2).map(|p| p + 1).unwrap_or(buf.len())
+            }
+        };
+        match system_frames::next_start(self.sys.as_ref(), buf, 1) {
+            Some(p) if p < user => p,
+            _ => user,
+        }
+        .max(1)
+    }
+
+    /// Parse step for a buffer head that starts with system start bytes.
+    fn parse_system_with_status(&mut self) -> FrameMsgInfo {
+        let sys = self.sys.unwrap();
+        let mut result = system_frames::parse(&sys, self.buf());
+        if result.valid {
+            self.diagnostics.cnt_system_frames += 1;
+            if let Some(last) = self.last_sys_seq {
+                if result.sequence != last.wrapping_add(1) {
+                    self.diagnostics.cnt_seq_gaps += 1;
+                }
+            }
+            self.last_sys_seq = Some(result.sequence);
+            self.partial_pending = false;
+            self.drain_head(result.frame_size);
+            result.diagnostics = Some(self.diagnostics);
+            return result;
+        }
+        if result.frame_size > 0 {
+            // Complete system frame with a bad CRC.
+            self.diagnostics.cnt_crc_failures += 1;
+            self.diagnostics.cnt_failed_bytes += result.frame_size as u32;
+            self.diagnostics.cnt_sync_recoveries += 1;
+            self.partial_pending = false;
+            self.drain_head(result.frame_size);
+            result.diagnostics = Some(self.diagnostics);
+            return result;
+        }
+        if result.status == FrameMsgStatus::Collecting {
+            if let Some(mut sync) = self.forced_resync_if_full() {
+                sync.diagnostics = Some(self.diagnostics);
+                return sync;
+            }
+            self.partial_pending = true;
+            result.diagnostics = Some(self.diagnostics);
+            return result;
+        }
+        // The header names an unknown system message or an impossible length: not a system
+        // frame after all. Resync past its start byte without collecting a payload.
+        let drain = self.next_start_after_head();
+        self.diagnostics.cnt_system_rejected += 1;
+        self.diagnostics.cnt_failed_bytes += drain as u32;
+        self.diagnostics.cnt_sync_recoveries += 1;
+        self.partial_pending = false;
+        self.drain_head(drain);
+        let mut sync = FrameMsgInfo::invalid();
+        sync.status = FrameMsgStatus::SyncRecovery;
+        sync.frame_size = drain;
+        sync.is_system = true;
+        sync.diagnostics = Some(self.diagnostics);
+        sync
     }
 
     /// Core parse step shared by `next()` and `push_byte()`. Always returns a
@@ -1441,6 +1594,10 @@ impl AccumulatingReader {
             r.status = FrameMsgStatus::WaitingForStart;
             r.diagnostics = Some(self.diagnostics);
             return r;
+        }
+
+        if system_frames::is_system_start(self.sys.as_ref(), self.buf()) {
+            return self.parse_system_with_status();
         }
 
         let mut result = if self.config.payload.has_crc {

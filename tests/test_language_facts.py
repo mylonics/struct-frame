@@ -13,6 +13,8 @@ names, accepted values and limits. The compiler imports it, and the extension in
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import subprocess
 import sys
 from pathlib import Path
@@ -138,55 +140,52 @@ def test_option_base_name():
 # Behaviour that now goes through the shared helpers
 # ---------------------------------------------------------------------------
 
-def _oneof_schema(variable_value: str) -> str:
-    return f"""
+def _oneof_schema(oneof_attrs: str) -> str:
+    return f"""\
 package facts_test;
-message Holder {{
-  option msgid = 1;
-  option variable = true;
-  oneof payload {{
-    option variable = {variable_value};
-    uint8 a = 1;
-    uint16 b = 2;
+
+message Holder @1 [variable] {{
+  oneof payload {oneof_attrs} {{
+    uint8 a;
+    uint16 b;
   }}
 }}
 """
 
 
-def test_oneof_variable_on_is_true():
-    # `on` was missing from the oneof's true set; the oneof was silently not variable.
-    import proto_schema_parser.parser as psp
-    file = psp.Parser().parse(_oneof_schema("on"))
-    msg = next(e for e in file.file_elements if type(e).__name__ == "Message")
-    oneof_ast = next(e for e in msg.elements if type(e).__name__ == "OneOf")
-    oneof = gen.OneOf("facts_test", [])
-    assert oneof.parse(oneof_ast)
-    assert oneof.variable is True
+@pytest.mark.parametrize("attrs, expected", [
+    ("[variable]", True), ("[variable = true]", True), ("[variable = false]", False), ("", False),
+])
+def test_flag_attribute_spellings(attrs, expected):
+    import contextlib
+    import io
+    gen.reset_parse_state()
+    from struct_frame.schema.parser import parse_text
+    from struct_frame.schema.lower import lower_file
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "f.sf")
+        tree, sink = parse_text(_oneof_schema(attrs), path)
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok = lower_file(tree, sink, path, path, tmp, None, gen)
+        assert ok and not sink.errors, [d.render() for d in sink.diagnostics]
+        assert gen.packages["facts_test"].messages["Holder"].oneofs["payload"].variable is expected
+    gen.reset_parse_state()
 
 
-def test_unquoted_yes_enables_message_variable():
-    import proto_schema_parser.parser as psp
-    file = psp.Parser().parse("package p; message M { option msgid = 1; option variable = yes; uint8 a = 1; }")
-    msg_ast = next(e for e in file.file_elements if type(e).__name__ == "Message")
-    msg = gen.Message("p", [])
-    assert msg.parse(msg_ast)
-    assert msg.variable is True
-
-
-def test_unknown_oneof_option_warns(tmp_path):
-    sf = _write(tmp_path, """
-package facts_test;
-message Holder {
-  option msgid = 1;
-  oneof payload {
-    option discriminater = field_order;
-    uint8 a = 1;
-  }
-}
-""")
+@pytest.mark.parametrize("spelling", ["yes", "on", "1", "\"true\""])
+def test_flags_only_take_true_or_false(tmp_path, spelling):
+    # The old syntax accepted yes/on/1/"true" as bools (and silently read typos as false).
+    sf = _write(tmp_path, _oneof_schema(f"[variable = {spelling}]"))
     r = run_generator(sf, "--validate")
-    assert r.returncode == 0, _out(r)
-    assert "unknown option 'discriminater' in oneof payload" in r.stderr
+    assert r.returncode != 0, _out(r)
+    assert "attribute 'variable' is a flag" in _out(r)
+
+
+def test_unknown_oneof_attribute_is_an_error(tmp_path):
+    sf = _write(tmp_path, _oneof_schema("[discriminater = field_order]"))
+    r = run_generator(sf, "--validate")
+    assert r.returncode != 0, _out(r)
+    assert "unknown attribute 'discriminater' on oneof payload" in r.stderr
     assert "did you mean 'discriminator'" in r.stderr
 
 

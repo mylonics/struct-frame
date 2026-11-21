@@ -69,21 +69,53 @@ def test_missing_schema_file_fails(tmp_path):
 
 def test_syntax_error_fails(tmp_path):
     sf = write(tmp_path, "bad.sf",
-               "package bad;\nmessage A {\n  option msgid = 1;\n  uint8 x = 1\n}\n")
+               "package bad;\nmessage A @1 {\n  uint8 x\n}\n")
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(tmp_path / "o"))
     assert r.returncode != 0, out(r)
     assert "successfully completed" not in out(r).lower()
 
 
 @pytest.mark.parametrize("body,label", [
-    ("message A { option msgid = 1; uint8 x = 1; }\n"
-     "message A { option msgid = 2; uint8 y = 1; }\n", "duplicate message"),
-    ("message A { option msgid = 1; uint8 x = 1; uint16 x = 2; }\n",
+    ("""\
+message A @1 {
+  uint8 x;
+}
+
+message A @2 {
+  uint8 y;
+}
+""", "duplicate message"),
+    ("""\
+message A @1 {
+  uint8 x;
+  uint16 x;
+}
+""",
      "duplicate field"),
-    ("enum E { A = 0; }\nenum E { B = 0; }\n"
-     "message M { option msgid = 1; uint8 x = 1; }\n", "duplicate enum"),
-    ("message M { option msgid = 1; uint8 x = 1; oneof o { uint8 a = 1; }"
-     " oneof o { uint8 b = 1; } }\n", "duplicate oneof"),
+    ("""\
+enum E {
+  A = 0;
+}
+
+enum E {
+  B = 0;
+}
+
+message M @1 {
+  uint8 x;
+}
+""", "duplicate enum"),
+    ("""\
+message M @1 {
+  uint8 x;
+  oneof o {
+    uint8 a;
+  }
+  oneof o {
+    uint8 b;
+  }
+}
+""", "duplicate oneof"),
 ])
 def test_redeclarations_are_validation_errors(tmp_path, body, label):
     sf = write(tmp_path, "dup.sf", "package dup;\n" + body)
@@ -100,7 +132,13 @@ def test_msgid_above_255_never_silently_truncated(tmp_path):
     """Accept either: rejected at generate time, or rejected when encoding with
     a profile that only has a 1-byte message id."""
     sf = write(tmp_path, "big.sf",
-               "package big;\nmessage M { option msgid = 300; uint8 x = 1; }\n")
+               """\
+package big;
+
+message M @300 {
+  uint8 x;
+}
+""")
     o = tmp_path / "py"
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(o))
     if r.returncode != 0:
@@ -123,7 +161,13 @@ def test_msgid_above_255_never_silently_truncated(tmp_path):
 @pytest.mark.parametrize("word", ["class", "self", "fn", "delete", "def", "None"])
 def test_reserved_word_field_is_rejected_or_escaped_in_python(tmp_path, word):
     sf = write(tmp_path, "kw.sf",
-               f"package kw;\nmessage M {{ option msgid = 1; uint8 {word} = 1; }}\n")
+               f"""\
+package kw;
+
+message M @1 {{
+  uint8 {word};
+}}
+""")
     o = tmp_path / "py"
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(o))
     if r.returncode != 0:
@@ -136,7 +180,13 @@ def test_reserved_word_field_is_rejected_or_escaped_in_python(tmp_path, word):
 def test_reserved_word_rejected_for_c_family(tmp_path):
     """A C header with a member called ``class`` cannot be included from C++."""
     sf = write(tmp_path, "kw.sf",
-               "package kw;\nmessage M { option msgid = 1; uint8 class = 1; }\n")
+               """\
+package kw;
+
+message M @1 {
+  uint8 class;
+}
+""")
     r = gen(tmp_path, sf, "--build_c", "--c_path", str(tmp_path / "c"))
     if r.returncode != 0:
         return
@@ -148,7 +198,14 @@ def test_reserved_word_rejected_for_c_family(tmp_path):
 def test_validate_runs_name_validation_without_build_flags(tmp_path):
     """--validate must report the same name collisions generation would."""
     sf = write(tmp_path, "col.sf",
-               "package col;\nmessage M { option msgid = 1; uint8 fooBar = 1; uint8 foo_bar = 2; }\n")
+               """\
+package col;
+
+message M @1 {
+  uint8 fooBar;
+  uint8 foo_bar;
+}
+""")
     gen_r = gen(tmp_path, sf, "--build_csharp", "--csharp_path", str(tmp_path / "cs"), "--force")
     assert gen_r.returncode != 0, "premise: C# generation rejects this schema"
     assert validate(sf).returncode != 0, \
@@ -161,22 +218,52 @@ def test_validate_runs_name_validation_without_build_flags(tmp_path):
 
 def test_enum_value_out_of_storage_range_rejected(tmp_path):
     sf = write(tmp_path, "en.sf",
-               "package en;\nenum E { A = 0; C = 300; }\n"
-               "message M { option msgid = 1; E e = 1; }\n")
+               """\
+package en;
+
+enum E {
+  A = 0;
+  C = 300;
+}
+
+message M @1 {
+  E e;
+}
+""")
     assert validate(sf).returncode != 0
 
 
 def test_negative_enum_value_rejected(tmp_path):
     sf = write(tmp_path, "en.sf",
-               "package en;\nenum E { A = 0; D = -5; }\n"
-               "message M { option msgid = 1; E e = 1; }\n")
+               """\
+package en;
+
+enum E {
+  A = 0;
+  D = -5;
+}
+
+message M @1 {
+  E e;
+}
+""")
     assert validate(sf).returncode != 0
 
 
 def test_duplicate_enum_values_rejected(tmp_path):
     sf = write(tmp_path, "en.sf",
-               "package en;\nenum E { A = 0; B = 0; }\n"
-               "message M { option msgid = 1; E e = 1; }\n")
+               """\
+package en;
+
+enum E {
+  A = 0;
+  B = 0;
+}
+
+message M @1 {
+  E e;
+}
+""")
     assert validate(sf).returncode != 0
 
 
@@ -185,21 +272,21 @@ def test_duplicate_enum_values_rejected(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("decl,label", [
-    ("float f = 1 [default = 1e40];", "float32 overflow default"),
-    ("E e = 1 [default = Big];", "enum default outside 0..255"),
+    ("float f = 1e40;", "float32 overflow default"),
+    ("E e = Big;", "enum default outside 0..255"),
 ])
 def test_bad_defaults_give_clean_error_not_traceback(tmp_path, decl, label):
     sf = write(tmp_path, "d.sf",
                "package d;\nenum E { Zero = 0; Big = 300; }\n"
-               f"message M {{ option msgid = 1; {decl} }}\n")
+               f"message M @1 {{ {decl} }}\n")
     r = validate(sf)
     assert no_traceback(r), f"{label}: {out(r)}"
     assert r.returncode != 0, label
 
 
-@pytest.mark.parametrize("opt", ['msgid = "5"', "msgid = 1.5"])
+@pytest.mark.parametrize("opt", ['"5"', "1.5"])
 def test_non_integer_msgid_is_clean_error(tmp_path, opt):
-    sf = write(tmp_path, "d.sf", f"package d;\nmessage M {{ option {opt}; uint8 x = 1; }}\n")
+    sf = write(tmp_path, "d.sf", f"package d;\nmessage M @{opt} {{ uint8 x; }}\n")
     r = validate(sf)
     assert no_traceback(r), out(r)
     assert r.returncode != 0, out(r)
@@ -207,7 +294,13 @@ def test_non_integer_msgid_is_clean_error(tmp_path, opt):
 
 def test_non_integer_pkgid_is_clean_error(tmp_path):
     sf = write(tmp_path, "d.sf",
-               'package d;\noption pkgid = "5";\nmessage M { option msgid = 1; uint8 x = 1; }\n')
+               """\
+package d @"5";
+
+message M @1 {
+  uint8 x;
+}
+""")
     r = validate(sf)
     assert no_traceback(r), out(r)
     assert r.returncode != 0
@@ -215,30 +308,42 @@ def test_non_integer_pkgid_is_clean_error(tmp_path):
 
 def test_msgid_redefinition_rejected(tmp_path):
     sf = write(tmp_path, "d.sf",
-               "package d;\nmessage M { option msgid = 0; option msgid = 7; uint8 x = 1; }\n")
+               """\
+package d;
+
+message M @0 @7 {
+  uint8 x;
+}
+""")
     assert validate(sf).returncode != 0
 
 
 # ---------------------------------------------------------------------------
-# B7  unknown options
+# B7  unknown attributes (a typo is an error, not a silently ignored option)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("decl", [
-    "uint8 x = 1 [defualt = 5];",
-    "repeated uint8 x = 1 [size = 4, max_sise = 4];",
+@pytest.mark.parametrize("decl, name", [
+    ("uint8 x [flaten];", "flaten"),
+    ("vector<uint8, 4> x [max_sise = 4];", "max_sise"),
 ])
-def test_unknown_field_option_warns(tmp_path, decl):
-    sf = write(tmp_path, "o.sf", f"package o;\nmessage M {{ option msgid = 1; {decl} }}\n")
+def test_unknown_field_attribute_is_an_error(tmp_path, decl, name):
+    sf = write(tmp_path, "o.sf", f"package o;\nmessage M @1 {{ {decl} }}\n")
     r = validate(sf)
-    assert r.returncode == 0, r.stderr
-    assert "warning: unknown option" in r.stderr and "o.sf" in r.stderr, r.stderr
+    assert r.returncode != 0, r.stderr
+    assert f"unknown attribute '{name}'" in r.stderr and "o.sf" in r.stderr, r.stderr
 
 
-def test_unknown_message_option_warns(tmp_path):
-    sf = write(tmp_path, "o.sf", "package o;\nmessage M { option msg_id = 1; uint8 x = 1; }\n")
+def test_unknown_message_attribute_is_an_error(tmp_path):
+    sf = write(tmp_path, "o.sf", """\
+package o;
+
+message M @1 [varible] {
+  uint8 x;
+}
+""")
     r = validate(sf)
-    assert r.returncode == 0, r.stderr
-    assert "warning: unknown option 'msg_id'" in r.stderr, r.stderr
+    assert r.returncode != 0, r.stderr
+    assert "unknown attribute 'varible'" in r.stderr and "did you mean 'variable'" in r.stderr, r.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -247,13 +352,32 @@ def test_unknown_message_option_warns(tmp_path):
 
 def _two_pkg_with_clashing_inner(tmp: Path) -> Path:
     write(tmp, "b3.sf",
-          "package pb;\noption pkgid = 2;\n"
-          "message Inner { uint64 a = 1; uint64 b = 2; }\n"
-          "message Outer { option msgid = 1; Inner x = 1; }\n")
+          """\
+package pb @2;
+
+struct Inner {
+  uint64 a;
+  uint64 b;
+}
+
+message Outer @1 {
+  Inner x;
+}
+""")
     return write(tmp, "a3.sf",
-                 "package pa;\noption pkgid = 1;\nimport \"b3.sf\";\n"
-                 "message Inner { uint8 z = 1; }\n"
-                 "message Use { option msgid = 1; pb.Outer o = 1; }\n")
+                 """\
+package pa @1;
+
+import "b3.sf";
+
+struct Inner {
+  uint8 z;
+}
+
+message Use @1 {
+  pb.Outer o;
+}
+""")
 
 
 def test_imported_type_resolves_in_owning_package(tmp_path):
@@ -269,24 +393,72 @@ def test_imported_type_resolves_in_owning_package(tmp_path):
 
 
 def test_ambiguous_unqualified_type_is_rejected(tmp_path):
-    write(tmp_path, "pa.sf", "package pa;\noption pkgid = 1;\nmessage Pos { uint8 x = 1; }\n")
+    write(tmp_path, "pa.sf", """\
+package pa @1;
+
+struct Pos {
+  uint8 x;
+}
+""")
     write(tmp_path, "pb.sf",
-          "package pb;\noption pkgid = 2;\nmessage Pos { uint32 x = 1; uint32 y = 2; }\n")
+          """\
+package pb @2;
+
+struct Pos {
+  uint32 x;
+  uint32 y;
+}
+""")
     main = write(tmp_path, "main.sf",
-                 'package main;\noption pkgid = 3;\nimport "pa.sf";\nimport "pb.sf";\n'
-                 "message M { option msgid = 1; Pos p = 1; }\n")
+                 """\
+package main @3;
+
+import "pa.sf";
+import "pb.sf";
+
+message M @1 {
+  Pos p;
+}
+""")
     assert validate(main).returncode != 0, "ambiguous 'Pos' silently resolved"
 
 
 def test_type_from_non_imported_package_is_rejected(tmp_path):
-    write(tmp_path, "pb.sf", "package pb;\noption pkgid = 2;\nmessage B { uint8 x = 1; }\n")
-    write(tmp_path, "pc.sf", "package pc;\noption pkgid = 4;\nmessage C { uint8 y = 1; }\n")
+    write(tmp_path, "pb.sf", """\
+package pb @2;
+
+struct B {
+  uint8 x;
+}
+""")
+    write(tmp_path, "pc.sf", """\
+package pc @4;
+
+struct C {
+  uint8 y;
+}
+""")
     main = write(tmp_path, "top.sf",
-                 'package top;\noption pkgid = 5;\nimport "pb.sf";\n'
-                 "message T { option msgid = 1; C c = 1; }\n")
+                 """\
+package top @5;
+
+import "pb.sf";
+
+message T @1 {
+  C c;
+}
+""")
     # pc.sf is only loaded if something imports it
     write(tmp_path, "pb.sf",
-          'package pb;\noption pkgid = 2;\nimport "pc.sf";\nmessage B { option msgid = 1; uint8 x = 1; }\n')
+          """\
+package pb @2;
+
+import "pc.sf";
+
+message B @1 {
+  uint8 x;
+}
+""")
     assert validate(main).returncode != 0, "'C' resolved through a transitive, un-imported package"
 
 
@@ -295,18 +467,43 @@ def test_type_from_non_imported_package_is_rejected(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_cross_package_effective_id_collision_rejected(tmp_path):
-    write(tmp_path, "pb.sf", "package pb;\nmessage Y { option msgid = 5; uint8 y = 1; }\n")
+    write(tmp_path, "pb.sf", """\
+package pb;
+
+message Y @5 {
+  uint8 y;
+}
+""")
     main = write(tmp_path, "pa.sf",
-                 'package pa;\noption pkgid = 1;\nimport "pb.sf";\n'
-                 "message X { option msgid = 5; uint8 x = 1; }\n")
+                 """\
+package pa @1;
+
+import "pb.sf";
+
+message X @5 {
+  uint8 x;
+}
+""")
     r = validate(main)
     assert r.returncode != 0, "pa.X and (inherited-pkgid) pb.Y both have id 0x0105"
 
 
 def test_duplicate_msgid_discriminator_values_rejected(tmp_path):
     sf = write(tmp_path, "d.sf",
-               "package d;\nmessage Foo { option msgid = 3; uint8 v = 1; }\n"
-               "message Holder { option msgid = 4; oneof body { Foo x = 1; Foo y = 2; } }\n")
+               """\
+package d;
+
+message Foo @3 {
+  uint8 v;
+}
+
+message Holder @4 {
+  oneof body {
+    Foo x;
+    Foo y;
+  }
+}
+""")
     assert validate(sf).returncode != 0, "two variants share discriminator value 3"
 
 
@@ -322,8 +519,17 @@ def test_duplicate_msgid_discriminator_values_rejected(tmp_path):
 def test_msgid_zero_is_not_treated_as_missing(tmp_path, flag, ext, declaration):
     """``option msgid = 0`` is a real id; every language must declare it."""
     sf = write(tmp_path, "z.sf",
-               "package z;\nmessage Zero { option msgid = 0; uint8 x = 1; }\n"
-               "message One { option msgid = 1; uint8 y = 1; }\n")
+               """\
+package z;
+
+message Zero @0 {
+  uint8 x;
+}
+
+message One @1 {
+  uint8 y;
+}
+""")
     o = tmp_path / "o"
     path_flag = "--csharp_path" if ext == "cs" else f"--{ext}_path"
     r = gen(tmp_path, sf, flag, path_flag, str(o))
@@ -339,16 +545,17 @@ def test_msgid_zero_is_not_treated_as_missing(tmp_path, flag, ext, declaration):
 # misc validation gaps
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("body,label", [
-    ("oneof v { }", "empty oneof"),
-    ("repeated uint8 a = 1 [size = 4, max_size = 8];", "size and max_size together"),
-    ("repeated uint8 a = 1 [max_size = 4, element_size = 2];", "element_size on non-string array"),
-    ("oneof v { option max_size = 4; option min_size = 16; uint8 a = 1; uint16 b = 2; }",
-     "oneof min_size > max_size"),
+@pytest.mark.parametrize("body,label,words", [
+    ("oneof v { }", "empty oneof", "has no variants"),
+    ("oneof v [max_size = 4, min_size = 16] { uint8 a; uint16 b; }",
+     "oneof min_size > max_size", "greater than max_size"),
+    ("vector<string<4>, 2> a;", "bounded string elements", "cannot be bounded"),
 ])
-def test_contradictory_options_rejected(tmp_path, body, label):
-    sf = write(tmp_path, "c.sf", f"package c;\nmessage M {{ option msgid = 1; {body} }}\n")
-    assert validate(sf).returncode != 0, label
+def test_contradictory_options_rejected(tmp_path, body, label, words):
+    sf = write(tmp_path, "c.sf", f"package c;\nmessage M @1 {{ {body} }}\n")
+    r = validate(sf)
+    assert r.returncode != 0, label
+    assert words in out(r), out(r)
 
 
 def test_extension_marker_in_trailing_comment_does_not_change_layout(tmp_path):
@@ -358,8 +565,8 @@ def test_extension_marker_in_trailing_comment_does_not_change_layout(tmp_path):
     def magic(comment: str) -> list[str]:
         sub = tmp_path / ("with" if comment else "without")
         sub.mkdir()
-        lines = ["package ext;", "message M {", "  option msgid = 1;",
-                 f"  uint8 a = 1;{comment}", "  uint8 b = 2;", "  uint8 c = 3;", "}"]
+        lines = ["package ext;", "message M @1 {",
+                 f"  uint8 a;{comment}", "  uint8 b;", "  uint8 c;", "}"]
         sf = write(sub, "ext.sf", "\n".join(lines) + "\n")
         o = sub / "c"
         r = gen(sub, sf, "--build_c", "--c_path", str(o))
@@ -379,8 +586,14 @@ def test_extension_marker_in_trailing_comment_does_not_change_layout(tmp_path):
 
 def test_utf8_comments_survive_generation(tmp_path):
     sf = tmp_path / "u.sf"
-    sf.write_bytes("package u;\n// Temperature in °C — range ≤ 100\n"
-                   "message M { option msgid = 1; uint8 t = 1; }\n".encode("utf-8"))
+    sf.write_bytes("""\
+package u;
+
+/// Temperature in °C — range ≤ 100
+message M @1 {
+  uint8 t;
+}
+""".encode("utf-8"))
     o = tmp_path / "c"
     r = gen(tmp_path, sf, "--build_c", "--c_path", str(o))
     assert r.returncode == 0, out(r)
@@ -393,22 +606,47 @@ def test_utf8_comments_survive_generation(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_cache_key_includes_import_graph(tmp_path):
-    write(tmp_path, "pc.sf", "package pc;\noption pkgid = 3;\nmessage C { option msgid = 1; uint8 c = 1; }\n")
+    write(tmp_path, "pc.sf", """\
+package pc @3;
+
+message C @1 {
+  uint8 c;
+}
+""")
     a = write(tmp_path, "pa.sf",
-              'package pa;\noption pkgid = 1;\nimport "pc.sf";\n'
-              "message A { option msgid = 1; uint8 x = 1; }\n")
+              """\
+package pa @1;
+
+import "pc.sf";
+
+message A @1 {
+  uint8 x;
+}
+""")
     o = tmp_path / "py"
     flags = ("--build_py", "--py_path", str(o))
     assert gen(tmp_path, a, *flags).returncode == 0
     write(tmp_path, "pa.sf",
-          "package pa;\noption pkgid = 1;\nmessage A { option msgid = 1; uint8 x = 1; }\n")
+          """\
+package pa @1;
+
+message A @1 {
+  uint8 x;
+}
+""")
     assert gen(tmp_path, a, *flags).returncode == 0
     src = (o / "structframe" / "pa.py").read_text(encoding="utf-8")
     assert "pc" not in src, "stale output: removed import still present (cache key ignores import graph)"
 
 
 def test_cache_hit_regenerates_missing_outputs(tmp_path):
-    sf = write(tmp_path, "c.sf", "package c;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    sf = write(tmp_path, "c.sf", """\
+package c;
+
+message M @1 {
+  uint8 x;
+}
+""")
     c_out, py_out = tmp_path / "c", tmp_path / "py"
     flags = ("--build_c", "--c_path", str(c_out), "--build_py", "--py_path", str(py_out))
     assert gen(tmp_path, sf, *flags).returncode == 0
@@ -437,23 +675,26 @@ def run_generator_diff(old: Path, new: Path):
 
 
 def test_diff_syntax_error_is_a_parse_error_not_a_diff(tmp_path):
-    good = write(tmp_path, "v1.sf", "package d;\nmessage M { option msgid = 1; uint8 a = 1; }\n")
-    bad = write(tmp_path, "v2.sf", "package d;\nmessage M { option msgid = 1; uint8 a = 1 }\n")
+    good = write(tmp_path, "v1.sf", """\
+package d;
+
+message M @1 {
+  uint8 a;
+}
+""")
+    bad = write(tmp_path, "v2.sf", "package d;\nmessage M @1 { uint8 a }\n")
     r = _diff(good, bad)
     assert r.returncode == 2, f"expected parse-error exit 2, got {r.returncode}:\n{out(r)}"
 
 
 TRIMMED = """package d;
-message Small {{ uint8 a = 1; }}
-message Big {{ uint8 a = 1; uint64 b = 2; }}
-message M {{
-  option msgid = 1;
-  option variable = true;
-  uint8 tag = 1;
-  oneof v {{
-    {opts}
-    Small s = 1;
-    Big b = 2;
+struct Small {{ uint8 a; }}
+struct Big {{ uint8 a; uint64 b; }}
+message M @1 [variable] {{
+  uint8 tag;
+  oneof v{opts} {{
+    Small s;
+    Big b;
   }}
 }}
 """
@@ -461,7 +702,7 @@ message M {{
 
 def test_diff_raising_trimmed_oneof_min_size_is_breaking(tmp_path):
     old = write(tmp_path, "v1.sf", TRIMMED.format(opts=""))
-    new = write(tmp_path, "v2.sf", TRIMMED.format(opts="option min_size = 16;"))
+    new = write(tmp_path, "v2.sf", TRIMMED.format(opts=" [min_size = 16]"))
     r = _diff(old, new)
     if r.returncode == 2:
         pytest.skip("premise broken: schema does not parse")
@@ -471,9 +712,30 @@ def test_diff_raising_trimmed_oneof_min_size_is_breaking(tmp_path):
 
 def test_diff_enum_moved_between_scopes_is_not_breaking(tmp_path):
     old = write(tmp_path, "v1.sf",
-                "package d;\nmessage M { option msgid = 1; enum K { A = 0; B = 1; } K k = 1; }\n")
+                """\
+package d;
+
+message M @1 {
+  enum K {
+    A = 0;
+    B = 1;
+  }
+  K k;
+}
+""")
     new = write(tmp_path, "v2.sf",
-                "package d;\nenum K { A = 0; B = 1; }\nmessage M { option msgid = 1; K k = 1; }\n")
+                """\
+package d;
+
+enum K {
+  A = 0;
+  B = 1;
+}
+
+message M @1 {
+  K k;
+}
+""")
     r = _diff(old, new)
     assert r.returncode == 0, f"wire-identical scope move reported breaking:\n{out(r)}"
 
@@ -496,11 +758,35 @@ def _gql_defined_and_used(text: str):
     return defined, used
 
 
-GQL_SCHEMA_A = ('package ga;\noption pkgid = 1;\nenum Mode { Idle = 0; Run = 1; }\n'
-                "message Stamp { uint32 secs = 1; int64 ns = 2; }\n")
-GQL_SCHEMA_B = ('package gb;\noption pkgid = 2;\nimport "ga.sf";\n'
-                "message Event {\n  option msgid = 1;\n  enum Kind { K0 = 0; K1 = 1; }\n"
-                "  Stamp when = 1;\n  Mode mode = 2;\n  Kind kind = 3;\n  uint64 id = 4;\n}\n")
+GQL_SCHEMA_A = ("""\
+package ga @1;
+
+enum Mode {
+  Idle = 0;
+  Run = 1;
+}
+
+struct Stamp {
+  uint32 secs;
+  int64 ns;
+}
+""")
+GQL_SCHEMA_B = ("""\
+package gb @2;
+
+import "ga.sf";
+
+message Event @1 {
+  enum Kind {
+    K0 = 0;
+    K1 = 1;
+  }
+  Stamp when;
+  Mode mode;
+  Kind kind;
+  uint64 id;
+}
+""")
 
 
 def _gql(tmp: Path) -> Path:
@@ -533,9 +819,23 @@ def test_graphql_stitched_schema_is_self_contained(tmp_path):
 
 
 def test_graphql_query_fields_unique(tmp_path):
-    write(tmp_path, "ga.sf", "package ga;\noption pkgid = 1;\nmessage Ping { option msgid = 1; uint8 x = 1; }\n")
+    write(tmp_path, "ga.sf", """\
+package ga @1;
+
+message Ping @1 {
+  uint8 x;
+}
+""")
     b = write(tmp_path, "gb.sf",
-              'package gb;\noption pkgid = 2;\nimport "ga.sf";\nmessage Ping { option msgid = 1; uint8 y = 1; }\n')
+              """\
+package gb @2;
+
+import "ga.sf";
+
+message Ping @1 {
+  uint8 y;
+}
+""")
     o = tmp_path / "gql"
     assert gen(tmp_path, b, "--build_gql", "--gql_path", str(o)).returncode == 0
     text = (o / "schema.graphql").read_text(encoding="utf-8")
@@ -676,8 +976,13 @@ def test_cli_reference_documents_only_real_flags():
     doc = (REPO_ROOT / "docs" / "src" / "content" / "docs" / "reference" / "cli-reference.md"
            ).read_text(encoding="utf-8")
     documented = set(re.findall(r"`(--[a-z][a-z0-9_-]*)", doc))
-    # flags owned by `diff` are documented in the same page
+    # flags owned by `diff`, `fmt` and `migrate` are documented in the same page
     documented -= {"--format", "--fail-on", "--write-snapshot"}
+    import sys as _sys
+    _sys.path.insert(0, str(SRC_DIR))
+    from struct_frame.schema.cli import build_fmt_parser, build_migrate_parser
+    for sub in (build_fmt_parser(), build_migrate_parser()):
+        documented -= {o for a in sub._actions for o in a.option_strings}
     unknown = sorted(documented - _with_snake_spellings(_argparse_flags()))
     assert not unknown, f"cli-reference.md documents flags that do not exist: {unknown}"
 
@@ -739,25 +1044,50 @@ def test_console_script_entry_point_declared():
 
 def test_flatten_collision_with_imported_type_is_rejected(tmp_path):
     write(tmp_path, "inner.sf",
-          "package inner;\noption pkgid = 2;\nmessage Pos { uint8 x = 1; uint8 mac_id = 2; }\n")
+          """\
+package inner @2;
+
+struct Pos {
+  uint8 x;
+  uint8 mac_id;
+}
+""")
     main = write(tmp_path, "outer.sf",
-                 'package outer;\noption pkgid = 1;\nimport "inner.sf";\n'
-                 "message M { option msgid = 1; uint32 mac_id = 1; inner.Pos p = 2 [flatten = true]; }\n")
+                 """\
+package outer @1;
+
+import "inner.sf";
+
+message M @1 {
+  uint32 mac_id;
+  inner.Pos p [flatten];
+}
+""")
     r = validate(main)
     assert r.returncode != 0, "flattened child 'mac_id' collides with the parent field but was accepted"
 
 
 def test_two_flattened_fields_of_the_same_type_collide(tmp_path):
     sf = write(tmp_path, "f.sf",
-               "package f;\nmessage Pos { uint8 x = 1; }\n"
-               "message M { option msgid = 1; Pos a = 1 [flatten = true]; Pos b = 2 [flatten = true]; }\n")
+               """\
+package f;
+
+struct Pos {
+  uint8 x;
+}
+
+message M @1 {
+  Pos a [flatten];
+  Pos b [flatten];
+}
+""")
     assert validate(sf).returncode != 0, "both flattened fields expose a child named 'x'"
 
 
-ONEOF_FLATTEN = ("package fz;\nmessage Pos {{ uint8 {child} = 1; uint8 y = 2; }}\n"
-                 "message A {{ option msgid = 2; uint8 v = 1; }}\nmessage B {{ option msgid = 3; uint8 w = 1; }}\n"
-                 "message M {{\n  option msgid = 1;\n  Pos p = 1 [flatten = true];\n"
-                 "  oneof choice {{\n    A a = 1;\n    B b = 2;\n  }}\n}}\n")
+ONEOF_FLATTEN = ("package fz;\nstruct Pos {{ uint8 {child}; uint8 y; }}\n"
+                 "message A @2 {{ uint8 v; }}\nmessage B @3 {{ uint8 w; }}\n"
+                 "message M @1 {{\n  Pos p [flatten];\n"
+                 "  oneof choice {{\n    A a;\n    B b;\n  }}\n}}\n")
 
 
 def test_flattened_child_colliding_with_oneof_member_is_rejected(tmp_path):
@@ -774,7 +1104,14 @@ def test_flattened_child_colliding_with_oneof_member_is_rejected(tmp_path):
 
 def test_validation_errors_go_to_stderr_and_name_the_file(tmp_path):
     sf = write(tmp_path, "bad.sf",
-               "package e;\nmessage M { option msgid = 1; uint8 x = 1; uint8 x = 2; }\n")
+               """\
+package e;
+
+message M @1 {
+  uint8 x;
+  uint8 x;
+}
+""")
     r = validate(sf)
     assert r.returncode != 0
     assert "declared twice" in r.stderr and "bad.sf" in r.stderr, r.stderr
@@ -782,15 +1119,33 @@ def test_validation_errors_go_to_stderr_and_name_the_file(tmp_path):
 
 
 def test_validation_success_output_stays_on_stdout(tmp_path):
-    sf = write(tmp_path, "ok.sf", "package ok;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    sf = write(tmp_path, "ok.sf", """\
+package ok;
+
+message M @1 {
+  uint8 x;
+}
+""")
     r = validate(sf)
     assert r.returncode == 0
     assert "Validation successful" in r.stdout
 
 
 def test_diff_accepts_leading_debug_flag(tmp_path):
-    old = write(tmp_path, "v1.sf", "package d;\nmessage M { option msgid = 1; uint8 a = 1; }\n")
-    new = write(tmp_path, "v2.sf", "package d;\nmessage M { option msgid = 1; uint8 a = 1; }\n")
+    old = write(tmp_path, "v1.sf", """\
+package d;
+
+message M @1 {
+  uint8 a;
+}
+""")
+    new = write(tmp_path, "v2.sf", """\
+package d;
+
+message M @1 {
+  uint8 a;
+}
+""")
     import os
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
@@ -801,7 +1156,13 @@ def test_diff_accepts_leading_debug_flag(tmp_path):
 
 
 def test_sdk_embedded_outside_cpp_says_it_has_no_effect(tmp_path):
-    sf = write(tmp_path, "s.sf", "package s;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    sf = write(tmp_path, "s.sf", """\
+package s;
+
+message M @1 {
+  uint8 x;
+}
+""")
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(tmp_path / "py"), "--sdk_embedded")
     assert r.returncode == 0, out(r)
     assert "only trims the C++ SDK" in r.stderr, r.stderr
@@ -820,7 +1181,13 @@ ALL_LANG_FLAGS = [("c", "--build_c", "--c_path"), ("cpp", "--build_cpp", "--cpp_
 @pytest.mark.parametrize("lang,build,path", ALL_LANG_FLAGS, ids=[x[0] for x in ALL_LANG_FLAGS])
 def test_cache_skips_unchanged_and_regenerates_deleted_output(tmp_path, lang, build, path):
     import shutil
-    sf = write(tmp_path, "c.sf", "package c;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    sf = write(tmp_path, "c.sf", """\
+package c;
+
+message M @1 {
+  uint8 x;
+}
+""")
     o = tmp_path / lang
     flags = (build, path, str(o))
     first = gen(tmp_path, sf, *flags)
@@ -851,10 +1218,25 @@ def test_cpp_message_with_field_and_oneof_named_data_encodes(tmp_path):
     if gxx is None:
         pytest.skip("no C++ compiler")
     sf = write(tmp_path, "d.sf",
-               "package d;\n"
-               "message Inner { option msgid = 2; uint8 a = 1; }\n"
-               "message Plain { option msgid = 1; uint8 data = 1; }\n"
-               "message Holder { option msgid = 3; uint8 kind = 1; oneof data { Inner inner = 1; uint8 raw = 2; } }\n")
+               """\
+package d;
+
+message Inner @2 {
+  uint8 a;
+}
+
+message Plain @1 {
+  uint8 data;
+}
+
+message Holder @3 {
+  uint8 kind;
+  oneof data {
+    Inner inner;
+    uint8 raw;
+  }
+}
+""")
     o = tmp_path / "cpp"
     r = gen(tmp_path, sf, "--build_cpp", "--cpp_path", str(o))
     assert r.returncode == 0, out(r)
@@ -890,20 +1272,51 @@ int main() {
 
 @pytest.mark.parametrize("schema, line, words", [
     # duplicate field: the second declaration
-    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1;\n  uint8 x = 2;\n}\n", 5, "declared twice"),
+    ("""\
+package a;
+
+message M @1 {
+  uint8 x;
+  uint8 x;
+}
+""", 5, "declared twice"),
     # unresolvable type
-    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1;\n  Nope y = 2;\n}\n", 5, "Failed To validate Field: y"),
+    ("""\
+package a;
+
+message M @1 {
+  uint8 x;
+  Nope y;
+}
+""", 5, "Failed To validate Field: y"),
     # enum value out of range: reported at the enum
-    ("package a;\nenum E { A = 0; B = 300; }\nmessage M {\n  option msgid = 1;\n  E e = 1;\n}\n", 2, "out of range"),
+    ("""\
+package a;
+
+enum E {
+  A = 0;
+  B = 300;
+}
+
+message M @1 {
+  E e;
+}
+""", 5, "out of range"),
     # reserved word (per-language name validation)
-    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 class = 1;\n}\n", 4, "reserved word"),
+    ("""\
+package a;
+
+message M @1 {
+  uint8 class;
+}
+""", 4, "reserved word"),
 ], ids=["duplicate-field", "unknown-type", "enum-range", "reserved-word"])
 def test_errors_carry_file_and_line(tmp_path, schema, line, words):
     sf = write(tmp_path, "loc.sf", schema)
     r = validate(sf)
     assert r.returncode != 0
     text = out(r)
-    assert f"loc.sf:{line}: " in text, f"expected loc.sf:{line}: in\n{text}"
+    assert re.search(rf"loc\.sf:{line}:(\d+:)? ", text), f"expected loc.sf:{line}: in\n{text}"
     assert words in text, text
 
 
@@ -916,17 +1329,41 @@ def test_renamed_outputs_are_pruned_without_touching_other_schemas(tmp_path):
     flags = ("--build_csharp", "--csharp_path", str(out_dir / "cs"),
              "--build_rust", "--rust_path", str(out_dir / "rs"),
              "--build_c", "--c_path", str(out_dir / "c"))
-    a = write(tmp_path, "a.sf", "package pa;\nmessage Alpha { option msgid = 1; uint8 x = 1; }\n"
-                                "message Beta { option msgid = 2; uint8 y = 1; }\n")
-    b = write(tmp_path, "b.sf", "package pb;\nmessage Other { option msgid = 1; uint8 z = 1; }\n")
+    a = write(tmp_path, "a.sf", """\
+package pa;
+
+message Alpha @1 {
+  uint8 x;
+}
+
+message Beta @2 {
+  uint8 y;
+}
+""")
+    b = write(tmp_path, "b.sf", """\
+package pb;
+
+message Other @1 {
+  uint8 z;
+}
+""")
     for schema in (a, b):
         r = gen(tmp_path, schema, *flags)
         assert r.returncode == 0, out(r)
     assert (out_dir / "cs" / "Pa" / "Messages" / "Beta.cs").exists()
 
     # Rename a message and the package: the old files must go, b.sf's files must stay.
-    write(tmp_path, "a.sf", "package pc;\nmessage Alpha { option msgid = 1; uint8 x = 1; }\n"
-                            "message Gamma { option msgid = 3; uint8 y = 1; }\n")
+    write(tmp_path, "a.sf", """\
+package pc;
+
+message Alpha @1 {
+  uint8 x;
+}
+
+message Gamma @3 {
+  uint8 y;
+}
+""")
     r = gen(tmp_path, a, *flags)
     assert r.returncode == 0, out(r)
     assert not (out_dir / "cs" / "Pa").exists(), "stale C# package folder left behind"
@@ -957,7 +1394,13 @@ def test_c_encoder_accepts_package_qualified_id_on_pkgid_profiles(tmp_path):
     carried as the package id. Standard/Sensor/IPC must still refuse (no silent truncation)."""
     import os
     sf = write(tmp_path, "p.sf",
-               "package pk;\noption pkgid = 3;\nmessage M { option msgid = 7; uint8 x = 1; }\n")
+               """\
+package pk @3;
+
+message M @7 {
+  uint8 x;
+}
+""")
     o = tmp_path / "c"
     r = gen(tmp_path, sf, "--build_c", "--c_path", str(o))
     assert r.returncode == 0, out(r)
@@ -994,7 +1437,13 @@ def test_per_language_runs_into_one_directory_do_not_prune_each_other(tmp_path):
     """The prune manifest was keyed by schema only, so a C run and a later C++ run into the same
     directory each deleted the other's files."""
     shared = tmp_path / "shared"
-    sf = write(tmp_path, "s.sf", "package s;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    sf = write(tmp_path, "s.sf", """\
+package s;
+
+message M @1 {
+  uint8 x;
+}
+""")
     built = set()
     for build, path, name in (("--build_c", "--c_path", "s.structframe.h"),
                               ("--build_cpp", "--cpp_path", "s.structframe.hpp")) * 2:
@@ -1007,7 +1456,13 @@ def test_per_language_runs_into_one_directory_do_not_prune_each_other(tmp_path):
 
 def test_same_run_sharing_a_directory_does_not_poison_a_later_single_language_run(tmp_path):
     shared = tmp_path / "shared"
-    sf = write(tmp_path, "s.sf", "package s;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    sf = write(tmp_path, "s.sf", """\
+package s;
+
+message M @1 {
+  uint8 x;
+}
+""")
     r = gen(tmp_path, sf, "--build_c", "--c_path", str(shared),
             "--build_cpp", "--cpp_path", str(shared))
     assert r.returncode == 0, out(r)
@@ -1016,13 +1471,13 @@ def test_same_run_sharing_a_directory_does_not_poison_a_later_single_language_ru
     assert (shared / "s.structframe.hpp").exists(), "C++ file deleted by a C-only run"
 
 
-_VARIABLE_PLAIN = """package v;
-message V {
-  option msgid = 1;
-  option variable = true;
-  uint8 a = 1;
-  string name = 2 [max_size = 6];
-  repeated uint16 vals = 3 [max_size = 3];
+_VARIABLE_PLAIN = """\
+package v;
+
+message V @1 [variable] {
+  uint8 a;
+  string<6> name;
+  vector<uint16, 3> vals;
 }
 """
 
@@ -1051,14 +1506,23 @@ def test_python_layout_hint_does_not_misdecode_fixed_payload_without_variable_on
 ])
 def test_layout_hint_is_emitted_only_for_variable_oneof_messages(tmp_path, lang, ext, needle):
     plain = write(tmp_path, "plain.sf", _VARIABLE_PLAIN)
-    oneof = write(tmp_path, "oneof.sf", """package w;
-message A { option msgid = 2; uint8 x = 1; }
-message B { option msgid = 3; uint16 y = 1; }
-message W {
-  option msgid = 1;
-  option variable = true;
-  uint8 k = 1;
-  oneof body { option variable = true; A a = 1; B b = 2; }
+    oneof = write(tmp_path, "oneof.sf", """\
+package w;
+
+message A @2 {
+  uint8 x;
+}
+
+message B @3 {
+  uint16 y;
+}
+
+message W @1 [variable] {
+  uint8 k;
+  oneof body [variable] {
+    A a;
+    B b;
+  }
 }
 """)
     texts = {}
@@ -1078,7 +1542,13 @@ def test_js_and_ts_accept_reserved_word_field_names(tmp_path, word):
     as properties, so they must not be rejected (and --validate must not reject them for
     projects that never build TS)."""
     sf = write(tmp_path, "rw.sf",
-               f"package rw;\nmessage M {{ option msgid = 1; uint8 {word} = 1; }}\n")
+               f"""\
+package rw;
+
+message M @1 {{
+  uint8 {word};
+}}
+""")
     for lang in ("ts", "js"):
         r = gen(tmp_path, sf, f"--build_{lang}", f"--{lang}_path", str(tmp_path / lang))
         assert r.returncode == 0, out(r)
@@ -1090,7 +1560,15 @@ def test_js_reserved_word_fields_roundtrip(tmp_path):
     if node is None:
         pytest.skip("no node")
     sf = write(tmp_path, "rw.sf",
-               "package rw;\nmessage M { option msgid = 1; uint8 default = 1; uint8 new = 2; uint8 delete = 3; }\n")
+               """\
+package rw;
+
+message M @1 {
+  uint8 default;
+  uint8 new;
+  uint8 delete;
+}
+""")
     o = tmp_path / "js"
     r = gen(tmp_path, sf, "--build_js", "--js_path", str(o))
     assert r.returncode == 0, out(r)
@@ -1104,46 +1582,6 @@ if (y.default !== 5 || y.new !== 6 || y.delete !== 7) process.exit(1);
     assert run.returncode == 0, run.stderr
 
 
-@pytest.mark.parametrize("comment", [
-    "// --- Extension:: ---",
-    "// the Extension:: block starts here",
-])
-def test_unrecognised_extension_marker_warns(tmp_path, comment):
-    """Decorated markers used to set extensions_start and are now ignored; silently changing the
-    wire layout (magic bytes) is the worst outcome, so the generator must say so."""
-    sf = write(tmp_path, "e.sf", f"""package e;
-message A {{ option msgid = 2; uint8 x = 1; }}
-message M {{
-  option msgid = 1;
-  oneof body {{
-    A a = 1;
-    {comment}
-    uint8 b = 2;
-  }}
-}}
-""")
-    r = validate(sf)
-    assert r.returncode == 0, out(r)
-    assert "not an extension marker" in r.stderr, out(r)
-
-
-def test_standalone_extension_marker_does_not_warn(tmp_path):
-    sf = write(tmp_path, "e.sf", """package e;
-message A { option msgid = 2; uint8 x = 1; }
-message M {
-  option msgid = 1;
-  oneof body {
-    A a = 1;
-    // Extension:: variants below are optional additions
-    uint8 b = 2;
-  }
-}
-""")
-    r = validate(sf)
-    assert r.returncode == 0, out(r)
-    assert "not an extension marker" not in out(r)
-
-
 def test_cpp_plain_oneof_message_stays_an_aggregate_and_defaulted_one_constructs(tmp_path):
     """Giving every message-typed oneof a constructor broke brace/designated initialisation of
     messages with plain nested variants. Only variants carrying member initialisers need it."""
@@ -1152,12 +1590,36 @@ def test_cpp_plain_oneof_message_stays_an_aggregate_and_defaulted_one_constructs
     gxx = shutil.which(os.environ.get("CXX", "g++"))
     if gxx is None:
         pytest.skip("no C++ compiler")
-    sf = write(tmp_path, "a.sf", """package a;
-message Plain { option msgid = 1; uint8 x = 1; }
-message Other { option msgid = 2; uint16 y = 1; }
-message Defaulted { option msgid = 3; uint8 z = 1 [default = 0]; }
-message Holder { option msgid = 4; uint8 k = 1; oneof body { Plain p = 1; Other o = 2; } }
-message HolderD { option msgid = 5; uint8 k = 1; oneof body { Plain p = 1; Defaulted d = 2; } }
+    sf = write(tmp_path, "a.sf", """\
+package a;
+
+message Plain @1 {
+  uint8 x;
+}
+
+message Other @2 {
+  uint16 y;
+}
+
+message Defaulted @3 {
+  uint8 z = 0;
+}
+
+message Holder @4 {
+  uint8 k;
+  oneof body {
+    Plain p;
+    Other o;
+  }
+}
+
+message HolderD @5 {
+  uint8 k;
+  oneof body {
+    Plain p;
+    Defaulted d;
+  }
+}
 """)
     o = tmp_path / "cpp"
     r = gen(tmp_path, sf, "--build_cpp", "--cpp_path", str(o))

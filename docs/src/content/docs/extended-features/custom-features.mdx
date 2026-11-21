@@ -82,65 +82,63 @@ See [Framing](/basic-usage/framing/) for more on minimal frames.
 
 ## Large Messages
 
-For messages > 255 bytes, use Extended payload type:
+For messages larger than 255 bytes, use a profile with a 16-bit length (Bulk or Network) when encoding:
 
 ```bash
-struct-frame large.proto --build-c
+struct-frame large.sf --build-c
 ```
-
-Use BasicExtended or Network frame profile when encoding.
 
 ## Variable-Length Encoding
 
-Use `option variable = true;` for efficient encoding of messages with variable-length arrays or strings:
+Mark a message `[variable]` for efficient encoding of variable-length arrays or strings:
 
-```proto
-message LogEntry {
-  option msgid = 10;
-  option variable = true;
-  uint64 timestamp = 1;
-  string message = 2 [max_size=256];
-  repeated uint8 data = 3 [max_size=128];
+```sf
+message LogEntry @10 [variable] {
+  uint64 timestamp;
+  string<256> message;
+  vector<uint8, 128> data;
 }
 ```
 
-Only used bytes are transmitted instead of full max_size. See [Message Definitions](/basic-usage/message-definitions/#message-options) for details.
+Only the bytes in use are transmitted instead of each field's full capacity. See [Message Definitions](/basic-usage/message-definitions/#attributes) for details.
 
 ## Variable Oneofs
 
-A `oneof` with a discriminator inside a variable message transmits only the active variant's bytes by default ("trimmed" mode). Add `option variable = true;` to the oneof for a length-prefixed forward-compatible format.
+A `oneof` with a discriminator inside a variable message transmits only the active variant's bytes by default ("trimmed" mode). Mark the oneof `[variable]` for a length-prefixed, forward-compatible format. The examples below use these payloads:
+
+```sf
+struct SmallPayload {
+  uint8 a;
+  uint16 b;
+}
+
+struct LargePayload {
+  array<uint8, 32> data;
+}
+```
 
 ### Trimmed Mode (Default)
 
-When the parent message is variable and the oneof has a discriminator (no `option variable = true;`), only the active variant's bytes are sent. The receiver derives the size from the discriminator:
+When the parent message is variable and the oneof has a discriminator (and is not `[variable]` itself), only the active variant's bytes are sent. The receiver derives the size from the discriminator:
 
-```proto
-message CommandMessage {
-  option msgid = 20;
-  option variable = true;
-
-  oneof data {
-    option discriminator = "field_order";
-    SmallPayload small = 1;   // 3 bytes on the wire when active
-    LargePayload large = 2;   // 32 bytes on the wire when active
+```sf
+message CommandMessage @20 [variable] {
+  oneof data [discriminator = field_order] {
+    SmallPayload small;  // 3 bytes on the wire when active
+    LargePayload large;  // 32 bytes on the wire when active
   }
 }
 ```
 
 ### Variable Mode (Length-Prefixed)
 
-Add `option variable = true;` to include a `uint16` length prefix, allowing receivers to skip unknown variants:
+Mark the oneof `[variable]` to include a `uint16` length prefix, allowing receivers to skip unknown variants:
 
-```proto
-message CommandMessage {
-  option msgid = 20;
-  option variable = true;
-
-  oneof data {
-    option discriminator = "field_order";
-    option variable = true;
-    SmallPayload small = 1;   // Only its own bytes transmitted
-    LargePayload large = 2;   // Only its own bytes transmitted
+```sf
+message LengthPrefixedCommand @21 [variable] {
+  oneof data [discriminator = field_order, variable] {
+    SmallPayload small;  // only its own bytes transmitted
+    LargePayload large;  // only its own bytes transmitted
   }
 }
 ```
@@ -149,25 +147,24 @@ message CommandMessage {
 
 ### Controlling Oneof Size
 
-**`option max_size = N;`** — valid on **non-variable (trimmed) oneofs only**. Reserves `N` bytes in the in-memory struct union for future variants without changing the wire size of current variants:
+**`max_size = N`** — valid on **non-variable (trimmed) oneofs only**. Reserves `N` bytes in the in-memory struct union for future variants without changing the wire size of current variants:
 
-```proto
-oneof data {
-  option discriminator = "field_order";
-  option max_size = 64;    // 64-byte in-memory buffer; not for variable oneofs
-  SmallPayload small = 1;  // Still 3 bytes on the wire
+```sf
+message Reserved @40 [variable] {
+  oneof data [discriminator = field_order, max_size = 64] {  // 64-byte in-memory buffer
+    SmallPayload small;  // Still 3 bytes on the wire
+  }
 }
 ```
 
-**`option min_size = N;`** — valid when the parent message is `variable = true` **and** the oneof is either `variable = true` or the only variable-length (trimmed) field in the message. Pads the wire payload to at least `N` bytes for backward compatibility:
+**`min_size = N`** — valid when the parent message is `[variable]` **and** the oneof is either `[variable]` or the only variable-length (trimmed) member of the message. Pads the wire payload to at least `N` bytes for backward compatibility:
 
-```proto
-oneof data {
-  option discriminator = "field_order";
-  option variable = true;
-  option min_size = 8;     // Transmit at least 8 bytes
-  SmallPayload small = 1;  // 3 bytes → padded to 8 bytes on the wire
-  LargePayload large = 2;  // 8 bytes → transmitted as-is
+```sf
+message Padded @41 [variable] {
+  oneof data [discriminator = field_order, variable, min_size = 8] {  // at least 8 bytes
+    SmallPayload small;  // 3 bytes → padded to 8 bytes on the wire
+    LargePayload large;  // 32 bytes → transmitted as-is
+  }
 }
 ```
 

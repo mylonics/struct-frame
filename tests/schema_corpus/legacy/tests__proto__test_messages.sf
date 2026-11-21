@@ -1,0 +1,497 @@
+// Combined test messages for struct-frame code generation framework
+// This file consolidates all test message definitions for testing
+//
+// Note: NestedMessage (from original nested_messages.proto) is intentionally
+// excluded because the JavaScript code generator has a bug with nested struct
+// references. The test suite only uses SerializationTestMessage for cross-language
+// testing, so this exclusion doesn't affect test coverage.
+package serialization_test;
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum Priority {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+  CRITICAL = 3;
+}
+
+enum Status {
+  INACTIVE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+  MAINTENANCE = 3;
+}
+
+enum MsgSeverity {
+  SEV_MSG = 0;
+  SEV_ERROR = 1;
+  SEV_WARN = 2;
+  SEV_INFO = 3;
+  SEV_DEBUG = 4;
+}
+
+// ============================================================================
+// Basic Types Test Message (msgid: 201)
+// ============================================================================
+
+// Test all basic data types
+message BasicTypesMessage {
+  option msgid = 201;
+  
+  // Integer types
+  int8 small_int = 1;
+  int16 medium_int = 2;
+  int32 regular_int = 3;
+  int64 large_int = 4;
+  
+  // Unsigned integer types
+  uint8 small_uint = 5;
+  uint16 medium_uint = 6;
+  uint32 regular_uint = 7;
+  uint64 large_uint = 8;
+  
+  // Floating point types
+  float single_precision = 9;
+  double double_precision = 10;
+  
+  // Boolean type
+  bool flag = 11;
+  
+  // Fixed string
+  string device_id = 12 [size=32];
+  
+  // Variable string
+  string description = 13 [max_size=128];
+}
+
+// ============================================================================
+// Comprehensive Arrays Test (msgid: 203)
+// ============================================================================
+
+message Sensor {
+  uint8 id = 1;
+  float value = 2;
+  Status status = 3;
+  string name = 4 [size=16];
+}
+
+message ComprehensiveArrayMessage {
+  option msgid = 203;
+  
+  // Fixed arrays of primitives
+  repeated int32 fixed_ints = 1 [size=3];
+  repeated float fixed_floats = 2 [size=2];
+  repeated bool fixed_bools = 3 [size=4];
+  
+  // Bounded arrays of primitives  
+  repeated uint16 bounded_uints = 4 [max_size=3];
+  repeated double bounded_doubles = 5 [max_size=2];
+  
+  // Fixed string arrays (smaller strings and fewer of them)
+  repeated string fixed_strings = 6 [size=2, element_size=8];
+  
+  // Bounded string arrays (smaller)
+  repeated string bounded_strings = 7 [max_size=2, element_size=12];
+  
+  // Enum arrays
+  repeated Status fixed_statuses = 8 [size=2];
+  repeated Status bounded_statuses = 9 [max_size=2];
+  
+  // Nested message arrays (reduced)
+  repeated Sensor fixed_sensors = 10 [size=1];
+  repeated Sensor bounded_sensors = 11 [max_size=1];
+}
+
+// ============================================================================
+// Serialization Test Message (msgid: 204)
+// ============================================================================
+
+// A simple message for cross-language serialization testing
+message SerializationTestMessage {
+  option msgid = 204;
+  
+  uint32 magic_number = 1;
+  string test_string = 2 [max_size=64];
+  float test_float = 3;
+  bool test_bool = 4;
+  repeated int32 test_array = 5 [max_size=5];
+}
+
+// ============================================================================
+// Union Message Test (msgid: 205)
+// ============================================================================
+
+// A message demonstrating union-like behavior using oneof
+// Since ComprehensiveArrayMessage and SerializationTestMessage both have
+// message IDs, the generator will automatically add a discriminator field
+message UnionTestMessage {
+  option msgid = 205;
+  
+  // oneof payload (auto-discriminator will be added for message ID)
+  oneof payload {
+    ComprehensiveArrayMessage array_payload = 1;
+    SerializationTestMessage test_payload = 2;
+  }
+}
+
+// ============================================================================
+// Field-Order Discriminator Test (msgid: 212)
+// ============================================================================
+
+// A message without a msgid (used in field_order discriminator oneof)
+message SimplePayload {
+  uint8 type_code = 1;
+  uint16 value = 2;
+}
+
+// A message using field_order discriminator (SimplePayload has no msgid,
+// so the auto-discriminator falls back to field_order, generating an enum)
+message UnionTestMessageFieldOrder {
+  option msgid = 212;
+
+  // oneof data (auto-discriminator will use field_order since SimplePayload has no msgid)
+  oneof data {
+    BasicTypesMessage basic_payload = 1;
+    SimplePayload simple_payload = 2;
+  }
+}
+
+// ============================================================================
+// Variable Length Message Tests (msgid: 206-208)
+// These messages use option variable = true for variable-length encoding
+// ============================================================================
+
+// Variable message with single bounded array (msgid: 206)
+message VariableSingleArray {
+  option msgid = 206;
+  option variable = true;
+  
+  uint32 message_id = 1;
+  repeated uint8 payload = 2 [max_size=200];  // Up to 200 bytes, only sends used
+  uint16 checksum = 3;
+}
+
+// Variable message with multiple bounded arrays (msgid: 207)
+message VariableMultipleArrays {
+  option msgid = 207;
+  option variable = true;
+  
+  uint8 type = 1;
+  repeated int32 readings = 2 [max_size=50];   // Up to 200 bytes of int32 data
+  repeated float values = 3 [max_size=25];     // Up to 100 bytes of float data
+  string label = 4 [max_size=64];              // Up to 64 chars variable string
+}
+
+// Variable message with mixed fixed and variable fields (msgid: 208)
+message VariableMixedFields {
+  option msgid = 208;
+  option variable = true;
+  
+  uint32 fixed_id = 1;               // Fixed field
+  float fixed_value = 2;             // Fixed field
+  string fixed_name = 3 [size=16];   // Fixed string
+  repeated uint16 variable_data = 4 [max_size=100];  // Variable array
+  string variable_desc = 5 [max_size=128];           // Variable string
+}
+
+// ============================================================================
+// Truncation Test Messages (msgid: 209-210)
+// These messages are identical except one has variable=true to test truncation
+// ============================================================================
+
+// Non-variable message with large array (msgid: 209)
+message TruncationTestNonVariable {
+  option msgid = 209;
+  
+  uint32 sequence_id = 1;
+  repeated uint8 data_array = 2 [max_size=200];  // Up to 200 bytes
+  uint16 footer = 3;
+}
+
+// Variable message with large array (msgid: 210)
+message TruncationTestVariable {
+  option msgid = 210;
+  option variable = true;
+  
+  uint32 sequence_id = 1;
+  repeated uint8 data_array = 2 [max_size=200];  // Up to 200 bytes
+  uint16 footer = 3;
+}
+
+// ============================================================================
+// Variable Message Test (msgid: 211)
+// ============================================================================
+
+// Variable message with two variable string fields
+message Message {
+  option msgid = 211;
+  option variable = true;
+  
+  MsgSeverity severity = 1;
+  string module = 2 [max_size=16];
+  string msg = 3 [max_size=255];
+}
+
+// ============================================================================
+// Nested Variable Message Tests (msgid: 220)
+// These messages exercise the nested-struct + variable-length code path:
+//   a nested struct containing variable-length fields (string and array),
+//   embedded in a parent message that is also marked option variable = true.
+// ============================================================================
+
+// Nested struct with variable-length fields (no msgid — used only as a sub-message)
+message NestedPayload {
+  uint8 id = 1;
+  string label = 2 [max_size=32];        // variable string inside nested struct
+  repeated uint16 samples = 3 [max_size=16]; // variable array inside nested struct
+}
+
+// Parent message with option variable = true containing a nested struct that has
+// variable-length fields, plus a top-level variable string.
+message NestedVariableMessage {
+  option msgid = 220;
+  option variable = true;
+
+  uint32 sequence = 1;
+  NestedPayload payload = 2;             // nested struct with variable fields
+  string description = 3 [max_size=64];
+}
+
+// ============================================================================
+// Nested Enum Test Message (msgid: 213)
+// ============================================================================
+
+// Tests a message-scoped enum definition and a field that references it
+message NestedEnumMessage {
+  option msgid = 213;
+
+  // Enum scoped to this message
+  enum OperationMode {
+    Idle = 0;
+    Active = 1;
+    Calibrating = 2;
+    ErrorState = 3;
+  }
+
+  OperationMode mode = 1;  // Field using the nested enum
+  uint8 value = 2;
+  bool enabled = 3;
+}
+
+// ============================================================================
+// Collision Enum Test Message (msgid: 214)
+// ============================================================================
+
+// Tests that an enum named identically to one of the fields (Status status)
+// is correctly renamed to StatusEnum to avoid CS0102 in C#.
+message CollisionEnumMessage {
+  option msgid = 214;
+
+  enum Status {
+    UNKNOWN = 0;
+    RUNNING = 1;
+    STOPPED = 2;
+    FAILED = 3;
+  }
+
+  Status status = 1;  // Collision: enum Status + field status -> StatusEnum
+  uint8 id = 2;
+  double time = 3;
+}
+
+// ============================================================================
+// Flatten Option Test (msgid: 215)
+// ============================================================================
+
+// Sub-message for flatten option test (no msgid - used as nested struct)
+message FlattenInner {
+  uint8 a = 1;
+  uint16 b = 2;
+}
+
+// Tests flatten=true option: inner fields appear inlined in to_dict() output
+message FlattenMessage {
+  option msgid = 215;
+  uint32 seq = 1;
+  FlattenInner inner = 2 [flatten=true];
+}
+
+// ============================================================================
+// Discriminator None Oneof Test (msgid: 216)
+// ============================================================================
+
+// Tests oneof with discriminator=none: no auto-discriminator field is generated.
+// Application must track which variant is active.
+message NoneDiscriminatorMessage {
+  option msgid = 216;
+  uint8 header = 1;
+  oneof data {
+    option discriminator = none;
+    BasicTypesMessage basic = 1;
+    SerializationTestMessage test_msg = 2;
+  }
+}
+
+// ============================================================================
+// Multiple Oneof Test (msgid: 217)
+// ============================================================================
+
+// Tests a message with two separate oneof fields.
+message MultiOneofMessage {
+  option msgid = 217;
+  uint8 selector = 1;
+  oneof first_payload {
+    BasicTypesMessage basic = 1;
+    SerializationTestMessage test_msg = 2;
+  }
+  oneof second_payload {
+    option discriminator = none;
+    VariableSingleArray var_single = 1;
+    Message msg_payload = 2;
+  }
+}
+
+// ============================================================================
+// Variable + Oneof Tests (msgid: 221-222)
+// These messages combine option variable = true with a oneof to cover the
+// code-generation bug where variable serializers skipped oneof fields entirely.
+// ============================================================================
+
+// Small fixed-size payload A (no msgid - used as oneof variant)
+message VarEnvPayloadA {
+  uint8 code = 1;
+  uint16 value = 2;
+}
+
+// Small fixed-size payload B (no msgid - used as oneof variant)
+message VarEnvPayloadB {
+  uint32 flags = 1;
+  float ratio = 2;
+}
+
+// Variable envelope with field_order discriminator (msgid: 221)
+// Combines variable = true + is_envelope = true + oneof (field_order)
+// This is the key regression test: discriminator + union must appear on the wire.
+message VariableEnvelopeMessage {
+  option msgid = 221;
+  option is_envelope = true;
+  option variable = true;
+
+  // Fixed header field (always present on the wire)
+  uint8 priority = 1;
+
+  // field_order oneof - discriminator must be serialized in variable format
+  oneof payload {
+    option discriminator = "field_order";
+    VarEnvPayloadA payload_a = 1;
+    VarEnvPayloadB payload_b = 2;
+  }
+}
+
+// Variable envelope with msgid discriminator (msgid: 222)
+// Uses msgs that have IDs so the generator picks msgid discriminator type.
+message VariableEnvelopeMsgIdMessage {
+  option msgid = 222;
+  option is_envelope = true;
+  option variable = true;
+
+  uint8 priority = 1;
+
+  // msgid oneof - uint16 discriminator must be serialized in variable format
+  oneof payload {
+    BasicTypesMessage basic = 1;
+    SerializationTestMessage test_msg = 2;
+  }
+}
+
+// ============================================================================
+// Variable oneof tests (msgid: 223-224)
+// Tests for option variable = true on a oneof (different from variable message with fixed oneof).
+// Wire format: [disc][uint16 length][variant_bytes]
+// ============================================================================
+
+// Variable oneof test message: oneof with variable = true
+// Each variant writes only its own bytes (not padded to union size).
+message VariableOneofMessage {
+  option msgid = 223;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option variable = true;
+    VarEnvPayloadA small_payload = 1;
+    VarEnvPayloadB large_payload = 2;
+  }
+}
+
+// Max-size oneof test message: oneof with max_size override
+// oneof.size is extended to 32 bytes so future larger variants fit.
+message MaxSizeOneofMessage {
+  option msgid = 224;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option max_size = 32;
+    VarEnvPayloadA small_payload = 1;
+  }
+}
+
+// Min-size oneof test message: oneof with min_size override
+// VarEnvPayloadA is 3 bytes; min_size = 8 pads it to 8 on the wire.
+// VarEnvPayloadB is 8 bytes; no padding needed (already at min_size).
+message MinSizeOneofMessage {
+  option msgid = 225;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option variable = true;
+    option min_size = 8;
+    VarEnvPayloadA small_payload = 1;
+    VarEnvPayloadB large_payload = 2;
+  }
+}
+
+// ============================================================================
+// Defaulted Oneof Variant Test (msgid: 226)
+// A union member whose type carries schema defaults is materialised eagerly by
+// generators that map union members onto nullable references (C#), so it stays
+// non-null while a *different* variant is the active one. Serialization must
+// therefore pick the payload from the discriminator, never from declaration
+// order or property nullability.
+// ============================================================================
+
+// Variant A: carries defaults, so generated code constructs it up front.
+message DefaultedVariantA {
+  uint8  code  = 1 [default = 170];
+  uint16 value = 2 [default = 4660];
+}
+
+// Variant B: no defaults - stays unset until the application assigns it.
+message DefaultedVariantB {
+  uint32 payload = 1;
+}
+
+// Envelope whose first union member is the default-carrying variant.
+message DefaultedOneofEnvelope {
+  option msgid = 226;
+  option is_envelope = true;
+
+  uint8 header = 1;
+
+  oneof command {
+    option discriminator = "field_order";
+    DefaultedVariantA command_a = 1;
+    DefaultedVariantB command_b = 2;
+  }
+}

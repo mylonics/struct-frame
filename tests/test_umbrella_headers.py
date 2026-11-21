@@ -15,15 +15,23 @@ import pytest
 
 from test_utils import run_generator
 
-MAIN_SF = """package um;
-option pkgid = 0;  // IDs <= 255, so the Standard profile can carry them too
+MAIN_SF = """\
+package um @0;  // IDs <= 255, so the Standard profile can carry them too
+
 import "um_other.sf";
-message Fixed { option msgid = 1; uint16 a = 1; float b = 2; }
+
+message Fixed @1 {
+  uint16 a;
+  float b;
+}
 """
 
-OTHER_SF = """package um_other;
-option pkgid = 5;
-message P { option msgid = 7; uint32 x = 1; }
+OTHER_SF = """\
+package um_other @5;
+
+message P @7 {
+  uint32 x;
+}
 """
 
 C_PROGRAM = r"""

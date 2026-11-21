@@ -70,7 +70,7 @@ def _build_c(tmp: Path):
         _unavailable("c", f"{cc} not found")
     exe = tmp / f"stream_c{EXE}"
     _run([cc, "-O1", "-std=c11", "-I", str(BOILER / "c"), str(DRIVERS / "stream_driver.c"), "-o", str(exe)])
-    return lambda p, f, c: _run([str(exe), p, str(f), str(c)])
+    return lambda p, f, c, *m: _run([str(exe), p, str(f), str(c), *m])
 
 
 def _build_cpp(tmp: Path):
@@ -79,14 +79,14 @@ def _build_cpp(tmp: Path):
         _unavailable("cpp", f"{cxx} not found")
     exe = tmp / f"stream_cpp{EXE}"
     _run([cxx, "-O1", "-std=c++20", "-I", str(BOILER / "cpp"), str(DRIVERS / "stream_driver.cpp"), "-o", str(exe)])
-    return lambda p, f, c: _run([str(exe), p, str(f), str(c)])
+    return lambda p, f, c, *m: _run([str(exe), p, str(f), str(c), *m])
 
 
 def _build_js(tmp: Path):
     if not shutil.which("node"):
         _unavailable("js", "node not found")
     script = DRIVERS / "stream_driver.js"
-    return lambda p, f, c: _run(["node", str(script), p, str(f), str(c)])
+    return lambda p, f, c, *m: _run(["node", str(script), p, str(f), str(c), *m])
 
 
 def _build_rust(tmp: Path):
@@ -97,7 +97,7 @@ def _build_rust(tmp: Path):
     cmd = ["cargo", "build", "--quiet", "--release", "--manifest-path", str(manifest), "--target-dir", str(env_target)]
     _run(cmd)
     exe = env_target / "release" / f"stream_driver{EXE}"
-    return lambda p, f, c: _run([str(exe), p, str(f), str(c)])
+    return lambda p, f, c, *m: _run([str(exe), p, str(f), str(c), *m])
 
 
 def _build_csharp(tmp: Path):
@@ -107,12 +107,12 @@ def _build_csharp(tmp: Path):
     out = tmp / "cs_out"
     _run(["dotnet", "build", "-c", "Release", "-o", str(out), "--nologo", "-v", "q", str(proj)])
     dll = out / "StreamDriver.dll"
-    return lambda p, f, c: _run(["dotnet", str(dll), p, str(f), str(c)])
+    return lambda p, f, c, *m: _run(["dotnet", str(dll), p, str(f), str(c), *m])
 
 
 def _build_py(tmp: Path):
     script = DRIVERS / "stream_driver.py"
-    return lambda p, f, c: _run([sys.executable, str(script), p, str(f), str(c)])
+    return lambda p, f, c, *m: _run([sys.executable, str(script), p, str(f), str(c), *m])
 
 
 BUILDERS = {
@@ -169,3 +169,57 @@ def test_stream_parsing(driver, streams, profile, seed):
     assert outputs["clean"] == s["ref_clean"], f"{lang}/{profile}: clean output differs from Python"
     assert outputs["corrupt"] == s["ref_corrupt"], f"{lang}/{profile}: corrupt-stream output differs from Python"
     assert outputs["noisy"] == s["ref_noisy"], f"{lang}/{profile}: noisy-stream output differs from Python"
+
+
+# ---- system frames (payload type 9) -------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def system_streams(tmp_path_factory) -> Dict:
+    d = tmp_path_factory.mktemp("system_streams")
+    result = {}
+    for profile, seed in [(p, s) for p in corpus.SYSTEM_PROFILES for s in SEEDS]:
+        stream, hidden, delivered = corpus.system_stream(profile, seed=seed + 300)
+        path = d / f"{profile}_{seed}_system.bin"
+        path.write_bytes(stream)
+        assert corpus.reference_decode(profile, stream, 1 << 20) == hidden
+        assert corpus.reference_decode(profile, stream, 1 << 20, system=True) == delivered
+        result[(profile, seed)] = {"file": path, "hidden": hidden, "delivered": delivered}
+    return result
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("profile", corpus.SYSTEM_PROFILES)
+def test_system_frames_in_streams(driver, system_streams, profile, seed):
+    """System frames interleaved with application frames (and, on CRC profiles, garbage and
+    stray system headers): hidden by default, delivered on request, counted the same way
+    by every runtime, whatever the chunking."""
+    lang, run = driver
+    s = system_streams[(profile, seed)]
+    for c in CHUNKS:
+        hidden = corpus.parse_output(run(profile, s["file"], c))
+        assert hidden == s["hidden"], f"{lang}/{profile}/chunk {c}: application frames differ with system frames hidden"
+        delivered = corpus.parse_output(run(profile, s["file"], c, "system"))
+        assert delivered == s["delivered"], (
+            f"{lang}/{profile}/chunk {c}: frames or counters differ with system frames delivered "
+            f"(got {delivered[-1]}, want {s['delivered'][-1]})")
+
+
+SYSTEM_GOLDENS = {"system_basic.bin": "standard", "system_tiny.bin": "sensor",
+                  "mixed_network_system.bin": "network"}
+
+
+@pytest.mark.parametrize("golden", sorted(SYSTEM_GOLDENS))
+def test_system_frame_goldens_decode_everywhere(driver, golden):
+    """The committed system-frame goldens (tests/golden, conformance section 9) decode the
+    same way in every runtime as in the Python reference, hidden and delivered."""
+    lang, run = driver
+    path = REPO / "tests" / "golden" / golden
+    profile = SYSTEM_GOLDENS[golden]
+    data = path.read_bytes()
+    for c in (1, 512):
+        for mode in ((), ("system",)):
+            want = corpus.reference_decode(profile, data, c, system=bool(mode))
+            got = corpus.parse_output(run(profile, path, c, *mode))
+            assert got == want, f"{lang}/{golden}/chunk {c}/{mode or 'hidden'}: differs from Python"
+    delivered = corpus.reference_decode(profile, data, 1 << 20, system=True)
+    assert delivered[-1][1] > 0, "the golden must contain system frames"

@@ -1,0 +1,2004 @@
+{
+ "ir": {
+  "documentation_hash": "490980f8a52afb3acaf731f8a6da8363c369643c7f7e059e64e9771d4973ddb0",
+  "package_imports": {},
+  "packages": [
+   {
+    "consts": {},
+    "enums": {
+     "ResponseStatus": {
+      "_class": "Enum",
+      "comments": [
+       "// ============================================================================",
+       "// Response Messages",
+       "// ============================================================================",
+       "// Generic response status"
+      ],
+      "data": {
+       "BUSY": [
+        2,
+        []
+       ],
+       "ERROR": [
+        1,
+        []
+       ],
+       "INVALID": [
+        3,
+        []
+       ],
+       "SUCCESS": [
+        0,
+        []
+       ]
+      },
+      "entry_trailing_comments": {
+       "BUSY": [],
+       "ERROR": [],
+       "INVALID": [],
+       "SUCCESS": []
+      },
+      "extensions_start": null,
+      "is_enum": true,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Response Messages",
+       "// ============================================================================",
+       "// Generic response status"
+      ],
+      "message": null,
+      "name": "ResponseStatus",
+      "package": "envelope_test",
+      "size": 1,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": []
+     }
+    },
+    "file_docs": {
+     "envelope_messages.sf": [
+      "// Test file for envelope/container message feature",
+      "// Demonstrates the is_envelope option for wrapping multiple message types"
+     ]
+    },
+    "messages": {
+     "ADCCommand": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [
+       "// ============================================================================",
+       "// Command Messages - These are the individual command types",
+       "// ============================================================================",
+       "// ADC (Analog-to-Digital Converter) Command"
+      ],
+      "default_bytes": {
+       "hex": "00000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "channel": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "channel",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "enable": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "enable",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sample_rate": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sample_rate",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 112,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Command Messages - These are the individual command types",
+       "// ============================================================================",
+       "// ADC (Analog-to-Digital Converter) Command"
+      ],
+      "magic_bytes": [
+       17,
+       26
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "ADCCommand",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 4,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "ADCResponse": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [
+       "// ADC Response"
+      ],
+      "default_bytes": {
+       "hex": "00000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "channel": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "channel",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ResponseStatus",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "envelope_test",
+        "type_ref": {
+         "message": null,
+         "name": "ResponseStatus",
+         "package": "envelope_test",
+         "ref": "enum"
+        }
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 212,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ADC Response"
+      ],
+      "magic_bytes": [
+       23,
+       32
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "ADCResponse",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 4,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "CommandEnvelope": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [
+       "// ============================================================================",
+       "// Envelope Message - Wraps all command types for unified handling",
+       "// ============================================================================",
+       "// CommandEnvelope is a container message that can hold any of the above commands.",
+       "// The is_envelope option enables special SDK helper methods for wrapping/unwrapping."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "priority": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "priority",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "run_immediately": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "run_immediately",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sequence_number": {
+        "_class": "Field",
+        "comments": [
+         "// Envelope-level fields (metadata about the command)"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Envelope-level fields (metadata about the command)"
+        ],
+        "max_size": null,
+        "name": "sequence_number",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 200,
+      "is_enum": false,
+      "is_envelope": true,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Envelope Message - Wraps all command types for unified handling",
+       "// ============================================================================",
+       "// CommandEnvelope is a container message that can hold any of the above commands.",
+       "// The is_envelope option enables special SDK helper methods for wrapping/unwrapping."
+      ],
+      "magic_bytes": [
+       188,
+       166
+      ],
+      "magic_bytes_override": null,
+      "min_size": 12,
+      "name": "CommandEnvelope",
+      "oneofs": {
+       "command": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 4,
+        "comments": [
+         "// Union of all command types - exactly one will be populated",
+         "// The auto-discriminator uses the message ID of the wrapped command"
+        ],
+        "discriminator_mode": "auto",
+        "discriminator_type": "msgid",
+        "extensions_start": null,
+        "field_order": [
+         "adc",
+         "dac",
+         "motor",
+         "sensor"
+        ],
+        "fields": {
+         "adc": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ADCCommand",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "adc",
+          "number": 1,
+          "package": "envelope_test",
+          "size": 4,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "ADCCommand",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "dac": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "DACCommand",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "dac",
+          "number": 2,
+          "package": "envelope_test",
+          "size": 4,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "DACCommand",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "motor": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "MotorCommand",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "motor",
+          "number": 3,
+          "package": "envelope_test",
+          "size": 4,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "MotorCommand",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "sensor": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SensorReadCommand",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "sensor",
+          "number": 4,
+          "package": "envelope_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "SensorReadCommand",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// Union of all command types - exactly one will be populated",
+         "// The auto-discriminator uses the message ID of the wrapped command"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "command",
+        "package": "envelope_test",
+        "size": 4,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          112,
+          "adc",
+          4
+         ],
+         [
+          113,
+          "dac",
+          4
+         ],
+         [
+          114,
+          "motor",
+          4
+         ],
+         [
+          115,
+          "sensor",
+          3
+         ]
+        ]
+       }
+      },
+      "package": "envelope_test",
+      "size": 12,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "DACCommand": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [
+       "// DAC (Digital-to-Analog Converter) Command"
+      ],
+      "default_bytes": {
+       "hex": "00000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "channel": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "channel",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "enable": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "enable",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "output_value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "output_value",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 113,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// DAC (Digital-to-Analog Converter) Command"
+      ],
+      "magic_bytes": [
+       17,
+       26
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "DACCommand",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 4,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "DACResponse": {
+      "_class": "Message",
+      "base_size": 2,
+      "comments": [
+       "// DAC Response"
+      ],
+      "default_bytes": {
+       "hex": "0000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "channel": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "channel",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ResponseStatus",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "envelope_test",
+        "type_ref": {
+         "message": null,
+         "name": "ResponseStatus",
+         "package": "envelope_test",
+         "ref": "enum"
+        }
+       }
+      },
+      "id": 213,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// DAC Response"
+      ],
+      "magic_bytes": [
+       17,
+       19
+      ],
+      "magic_bytes_override": null,
+      "min_size": 2,
+      "name": "DACResponse",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 2,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "MotorCommand": {
+      "_class": "Message",
+      "base_size": 4,
+      "comments": [
+       "// Motor Control Command"
+      ],
+      "default_bytes": {
+       "hex": "00000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "brake": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "bool",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "brake",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "direction": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "direction",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "speed": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "speed",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 114,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Motor Control Command"
+      ],
+      "magic_bytes": [
+       18,
+       31
+      ],
+      "magic_bytes_override": null,
+      "min_size": 4,
+      "name": "MotorCommand",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 4,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "MotorResponse": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// Motor Response"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "actual_speed": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "int16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "actual_speed",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ResponseStatus",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "envelope_test",
+        "type_ref": {
+         "message": null,
+         "name": "ResponseStatus",
+         "package": "envelope_test",
+         "ref": "enum"
+        }
+       }
+      },
+      "id": 214,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Motor Response"
+      ],
+      "magic_bytes": [
+       20,
+       25
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "MotorResponse",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 3,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "RawConfigPayload": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// Config payload without msgid - forces field_order discriminator"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "setting_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "setting_id",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "setting_value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "setting_value",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Config payload without msgid - forces field_order discriminator"
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "RawConfigPayload",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 3,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "RawDataEnvelope": {
+      "_class": "Message",
+      "base_size": 12,
+      "comments": [
+       "// Envelope wrapping payloads that have no msgid.",
+       "// Since neither RawSamplePayload nor RawConfigPayload has a msgid,",
+       "// the auto-discriminator uses field_order, generating a discriminator enum.",
+       "// This is the scenario that exposed the enum naming bug in SdkInterface.cs."
+      ],
+      "default_bytes": {
+       "hex": "000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "priority": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "priority",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "timestamp_us": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "timestamp_us",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 300,
+      "is_enum": false,
+      "is_envelope": true,
+      "leading_comments": [
+       "// Envelope wrapping payloads that have no msgid.",
+       "// Since neither RawSamplePayload nor RawConfigPayload has a msgid,",
+       "// the auto-discriminator uses field_order, generating a discriminator enum.",
+       "// This is the scenario that exposed the enum naming bug in SdkInterface.cs."
+      ],
+      "magic_bytes": [
+       176,
+       29
+      ],
+      "magic_bytes_override": null,
+      "min_size": 12,
+      "name": "RawDataEnvelope",
+      "oneofs": {
+       "payload": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [],
+        "discriminator_mode": "auto",
+        "discriminator_type": "field_order",
+        "extensions_start": null,
+        "field_order": [
+         "sample",
+         "config"
+        ],
+        "fields": {
+         "config": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "RawConfigPayload",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "config",
+          "number": 2,
+          "package": "envelope_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "RawConfigPayload",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "sample": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "RawSamplePayload",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "sample",
+          "number": 1,
+          "package": "envelope_test",
+          "size": 6,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "RawSamplePayload",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "payload",
+        "package": "envelope_test",
+        "size": 6,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          1,
+          "sample",
+          6
+         ],
+         [
+          2,
+          "config",
+          3
+         ]
+        ]
+       }
+      },
+      "package": "envelope_test",
+      "size": 12,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "RawSamplePayload": {
+      "_class": "Message",
+      "base_size": 6,
+      "comments": [
+       "// ============================================================================",
+       "// Field-Order Discriminator Envelope Test",
+       "// These inner types intentionally have NO msgid, so the auto-discriminator",
+       "// falls back to field_order - this exercises the SDK interface enum naming fix.",
+       "// ============================================================================",
+       "// Payload type without msgid - forces field_order discriminator"
+      ],
+      "default_bytes": {
+       "hex": "000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "channel": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "channel",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "flags": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "flags",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": null,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Field-Order Discriminator Envelope Test",
+       "// These inner types intentionally have NO msgid, so the auto-discriminator",
+       "// falls back to field_order - this exercises the SDK interface enum naming fix.",
+       "// ============================================================================",
+       "// Payload type without msgid - forces field_order discriminator"
+      ],
+      "magic_bytes": [
+       16,
+       30
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "RawSamplePayload",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 6,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "ResponseEnvelope": {
+      "_class": "Message",
+      "base_size": 16,
+      "comments": [
+       "// ============================================================================",
+       "// Response Envelope",
+       "// ============================================================================",
+       "// ResponseEnvelope wraps all response types"
+      ],
+      "default_bytes": {
+       "hex": "00000000000000000000000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "sequence_number": {
+        "_class": "Field",
+        "comments": [
+         "// Envelope-level fields"
+        ],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [
+         "// Envelope-level fields"
+        ],
+        "max_size": null,
+        "name": "sequence_number",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "timestamp_ms": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint32",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "timestamp_ms",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 250,
+      "is_enum": false,
+      "is_envelope": true,
+      "leading_comments": [
+       "// ============================================================================",
+       "// Response Envelope",
+       "// ============================================================================",
+       "// ResponseEnvelope wraps all response types"
+      ],
+      "magic_bytes": [
+       118,
+       153
+      ],
+      "magic_bytes_override": null,
+      "min_size": 16,
+      "name": "ResponseEnvelope",
+      "oneofs": {
+       "response": {
+        "_class": "OneOf",
+        "auto_discriminator": true,
+        "base_size": 6,
+        "comments": [
+         "// Union of all response types"
+        ],
+        "discriminator_mode": "auto",
+        "discriminator_type": "msgid",
+        "extensions_start": null,
+        "field_order": [
+         "adc",
+         "dac",
+         "motor",
+         "sensor"
+        ],
+        "fields": {
+         "adc": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "ADCResponse",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "adc",
+          "number": 1,
+          "package": "envelope_test",
+          "size": 4,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "ADCResponse",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "dac": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "DACResponse",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "dac",
+          "number": 2,
+          "package": "envelope_test",
+          "size": 2,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "DACResponse",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "motor": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "MotorResponse",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "motor",
+          "number": 3,
+          "package": "envelope_test",
+          "size": 3,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "MotorResponse",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         },
+         "sensor": {
+          "_class": "Field",
+          "comments": [],
+          "default": null,
+          "default_numeric": null,
+          "element_size": null,
+          "field_type": "SensorResponse",
+          "flatten": false,
+          "is_array": false,
+          "is_default_type": false,
+          "is_enum": false,
+          "is_extension": false,
+          "leading_comments": [],
+          "max_size": null,
+          "name": "sensor",
+          "number": 4,
+          "package": "envelope_test",
+          "size": 6,
+          "size_option": null,
+          "source_file": "envelope_messages.sf",
+          "trailing_comments": [],
+          "type_message": null,
+          "type_package": "envelope_test",
+          "type_ref": {
+           "message": null,
+           "name": "SensorResponse",
+           "package": "envelope_test",
+           "ref": "message"
+          }
+         }
+        },
+        "leading_comments": [
+         "// Union of all response types"
+        ],
+        "max_size_override": null,
+        "min_size_override": null,
+        "name": "response",
+        "package": "envelope_test",
+        "size": 6,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "variable": false,
+        "variant_extra": [
+         [
+          4,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          2,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          3,
+          {
+           "hex": ""
+          }
+         ],
+         [
+          6,
+          {
+           "hex": ""
+          }
+         ]
+        ],
+        "variant_info": [
+         [
+          212,
+          "adc",
+          4
+         ],
+         [
+          213,
+          "dac",
+          2
+         ],
+         [
+          214,
+          "motor",
+          3
+         ],
+         [
+          215,
+          "sensor",
+          6
+         ]
+        ]
+       }
+      },
+      "package": "envelope_test",
+      "size": 16,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "SensorReadCommand": {
+      "_class": "Message",
+      "base_size": 3,
+      "comments": [
+       "// Sensor Read Command"
+      ],
+      "default_bytes": {
+       "hex": "000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "interval_ms": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint16",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "interval_ms",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 2,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "sensor_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sensor_id",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 115,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Sensor Read Command"
+      ],
+      "magic_bytes": [
+       7,
+       9
+      ],
+      "magic_bytes_override": null,
+      "min_size": 3,
+      "name": "SensorReadCommand",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 3,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     },
+     "SensorResponse": {
+      "_class": "Message",
+      "base_size": 6,
+      "comments": [
+       "// Sensor Response"
+      ],
+      "default_bytes": {
+       "hex": "000000000000"
+      },
+      "discriminator_mode": null,
+      "enums": {},
+      "extensions_start": null,
+      "fields": {
+       "sensor_id": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "uint8",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "sensor_id",
+        "number": 1,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       },
+       "status": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "ResponseStatus",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": false,
+        "is_enum": true,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "status",
+        "number": 3,
+        "package": "envelope_test",
+        "size": 1,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": "envelope_test",
+        "type_ref": {
+         "message": null,
+         "name": "ResponseStatus",
+         "package": "envelope_test",
+         "ref": "enum"
+        }
+       },
+       "value": {
+        "_class": "Field",
+        "comments": [],
+        "default": null,
+        "default_numeric": null,
+        "element_size": null,
+        "field_type": "float",
+        "flatten": false,
+        "is_array": false,
+        "is_default_type": true,
+        "is_enum": false,
+        "is_extension": false,
+        "leading_comments": [],
+        "max_size": null,
+        "name": "value",
+        "number": 2,
+        "package": "envelope_test",
+        "size": 4,
+        "size_option": null,
+        "source_file": "envelope_messages.sf",
+        "trailing_comments": [],
+        "type_message": null,
+        "type_package": null,
+        "type_ref": null
+       }
+      },
+      "id": 215,
+      "is_enum": false,
+      "is_envelope": false,
+      "leading_comments": [
+       "// Sensor Response"
+      ],
+      "magic_bytes": [
+       28,
+       42
+      ],
+      "magic_bytes_override": null,
+      "min_size": 6,
+      "name": "SensorResponse",
+      "oneofs": {},
+      "package": "envelope_test",
+      "size": 6,
+      "source_file": "envelope_messages.sf",
+      "trailing_comments": [],
+      "variable": false
+     }
+    },
+    "name": "envelope_test",
+    "package_id": null,
+    "package_id_explicit": false,
+    "services": {}
+   }
+  ],
+  "schema_hash": "1120ae361a58267bd7a7969e0e79351c71ac89f4a1e415ef10b0563c05f87e31"
+ },
+ "outputs": {
+  "c/envelope_test.structframe.h": "15ccc7f9f2a3af381b31c77bbedeff876c5c2b12c9c4836570526a405ec14ca4",
+  "c/envelope_test.tests.h": "14d5acbb236a53dce8b33fdaebf0a11800454cd8efc855ff395ce54e65d2afde",
+  "c/structframe_all.h": "bee9dbaf79bdecc876e946985c621955c875e88e4b8c36ba42de7fb75bcbb126",
+  "c/test_roundtrip_envelope_test.c": "dd120f5a8aea2afd5ed537f8a6ef71d59c74ff238dd0a58909806c273f8f67bf",
+  "cpp/envelope_test.structframe.hpp": "9064f57a8e2e5e18979c9057665d337a79943aacafd6966d46a4232f5f1b6c98",
+  "cpp/envelope_test.tests.hpp": "d0f04eccccd608c6d5f0484e93567ea94cfe9ec390853815e44b17a045f161a0",
+  "cpp/structframe_all.hpp": "32e9d274d50f6ffbf3261fea0da1372eaa1b2a523081b39729b05993c2861d5d",
+  "cpp/test_roundtrip_envelope_test.cpp": "62536f1d5bc1abef6f5e1a17dcaee71817a67d216e224a1cbd373f497c130c94",
+  "csharp/EnvelopeTest/Constants.cs": "c26374b8e68ee8ae58b35d1fc5378c0413b08f268c53626d0294e8a47c478cf0",
+  "csharp/EnvelopeTest/Enums/RawDataEnvelopePayloadField.cs": "0151eadc408bbb668461eada3d501036dbf7a3694c0386161281bd605a2ab316",
+  "csharp/EnvelopeTest/Enums/ResponseStatus.cs": "88a3afe379efde8a0f961928fe6e1fbd65a583100ef8264b2bf5f3dd843afba7",
+  "csharp/EnvelopeTest/MessageDefinitions.cs": "a02fcd54d670ac44817b057969f0edb33aab0d0e01fcd88bf8fcc38167af9eba",
+  "csharp/EnvelopeTest/Messages/ADCCommand.cs": "016e38fcb592946596f45d78869a9661e5f004ae0bbb0412fbafdcb960c60877",
+  "csharp/EnvelopeTest/Messages/ADCResponse.cs": "4e9b1a3b790dad308b00448b5862c76c3f22a73e0586543aa293e547ac52b30d",
+  "csharp/EnvelopeTest/Messages/CommandEnvelope.cs": "6119e38a3c1887bb841798ff2db86af15ec51a20894d5ed3215d07c506421da6",
+  "csharp/EnvelopeTest/Messages/DACCommand.cs": "1e4dd6f15cc22441b1538d0f81e233660078ae27097b9481b8c025c7c26541bc",
+  "csharp/EnvelopeTest/Messages/DACResponse.cs": "1b8f9b44fc4d260cb7a161a053da01f612292f46d5ad1686681b51e5c1484974",
+  "csharp/EnvelopeTest/Messages/MotorCommand.cs": "a9622421e365271e4133fdbd7320b760c657a7b09fd1b603fa29b5f144f51f56",
+  "csharp/EnvelopeTest/Messages/MotorResponse.cs": "f32caa9267ece27b0e2b192d9ca201838ee2a6c6f811a7ce19632acf64059569",
+  "csharp/EnvelopeTest/Messages/RawConfigPayload.cs": "27c9e7011c09f61932e535c9f8289ae008a26fb71a5855c6f9ba188d72b089eb",
+  "csharp/EnvelopeTest/Messages/RawDataEnvelope.cs": "fb593375fceb7360a3df641550a37133e3330901dd4106e52bb947c0441b8bfa",
+  "csharp/EnvelopeTest/Messages/RawSamplePayload.cs": "9d696271fa5ed06f5aeaca7d69b7bcc1066548944ec53656b6109d830966ba74",
+  "csharp/EnvelopeTest/Messages/ResponseEnvelope.cs": "f4ccb810c80d3bceb4e97a7e5c9ac5ec5d97e38e2e4726fb7374b70b0d7d6714",
+  "csharp/EnvelopeTest/Messages/SensorReadCommand.cs": "0b0c58192bdf970170913527878214439d013bc7f01d41dd28e0b4d3f1c5a1d1",
+  "csharp/EnvelopeTest/Messages/SensorResponse.cs": "005c8fd1526ddc6874c5be2903581e0a16ed2cf6cb8a66abf230ea7275b3aa25",
+  "csharp/EnvelopeTest/SdkInterface.cs": "5d2e5f170817015ac3ac1ea8d026d4e03869b49ec26151b2843dbb5af2e0179c",
+  "csharp/EnvelopeTest/test_roundtrip_envelope_test.cs": "f3c9baf7bf4bb7798c849c5e2e34d8025f8ed4046d82362854c1c7de8e7ff5bc",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/envelope_test.graphql": "eba55d936250be9fed70c886f23cb1fbc4525cdea3da35f20b3f57fa9b151bce",
+  "gql/schema.graphql": "0f6c7c410b2eac3e050a15c59b80e84cf5a9ac119a2ba13770705687e3723432",
+  "js/envelope-test.structframe.js": "20315459ba3cfe1830c6eece685aeae5bb555ede6f2db0d0a03710868d723c1e",
+  "js/test_roundtrip_envelope_test.js": "eadc177d1954be12fce521365874bdd4cb76df5d9ed60e8039e59bbf5aab9147",
+  "py/structframe/envelope_test.py": "fbde610bb78e5485000fe8d64524b4a9e333cb83113cfc600b52ef56bfa4919e",
+  "py/structframe/envelope_test_tests.py": "6d4ba4527ffc384111c3912a8302c2368d58cf525b2ef8cbf9f193dc3badfe4b",
+  "py/test_roundtrip_envelope_test.py": "532e5dc0d66f47f3d2ebe017281538ef37d11cdcb47ddc77474946ba3d2a67f3",
+  "rust/Cargo.toml": "d07f7e31a0c7862c1abe672d8e41da7a8e70e389c1c9ab91549808139fa0d63e",
+  "rust/envelope_test.structframe.rs": "3833de6646976541c022b17d90c74895034b1f1dcc79469c43e9726ec7445826",
+  "rust/test_roundtrip_envelope_test.rs": "107a059b4c4570f9a00efd5eae0fb2e8e26bf3f51d8c06d1cbbdf6fcbfaccfab",
+  "sf_compile.json": "34aa72cb9e2608dafa079d39b7f946c64418d5240f72ccd76f4c4021945ab4c2",
+  "ts/envelope-test.structframe.ts": "a0651e810e131026f6a1c08db7f097e0d3045cc68d68f26998cc276b5bc5b117",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_envelope_test.ts": "256c98b4c1cd4ee1f6f9314ed93b77330c01542de43b401c28c76ef0081da095"
+ },
+ "outputs_no_packed": {
+  "c/envelope_test.structframe.h": "3f05b71c8a25756f8fbe152bf2ce0fdd2664e8b4ebf2e6df882998b8ff171017",
+  "c/envelope_test.tests.h": "14d5acbb236a53dce8b33fdaebf0a11800454cd8efc855ff395ce54e65d2afde",
+  "c/structframe_all.h": "bee9dbaf79bdecc876e946985c621955c875e88e4b8c36ba42de7fb75bcbb126",
+  "c/test_roundtrip_envelope_test.c": "dd120f5a8aea2afd5ed537f8a6ef71d59c74ff238dd0a58909806c273f8f67bf",
+  "cpp/envelope_test.structframe.hpp": "4cd3672c23c5931b4cec079a5b19832209425056865a58625180fed59b1715a2",
+  "cpp/envelope_test.tests.hpp": "d0f04eccccd608c6d5f0484e93567ea94cfe9ec390853815e44b17a045f161a0",
+  "cpp/structframe_all.hpp": "32e9d274d50f6ffbf3261fea0da1372eaa1b2a523081b39729b05993c2861d5d",
+  "cpp/test_roundtrip_envelope_test.cpp": "62536f1d5bc1abef6f5e1a17dcaee71817a67d216e224a1cbd373f497c130c94",
+  "csharp/EnvelopeTest/Constants.cs": "e4176df6cc2e487f25538fe1a8b997b4f16160d839859bf2293f604c8e013525",
+  "csharp/EnvelopeTest/Enums/RawDataEnvelopePayloadField.cs": "0151eadc408bbb668461eada3d501036dbf7a3694c0386161281bd605a2ab316",
+  "csharp/EnvelopeTest/Enums/ResponseStatus.cs": "88a3afe379efde8a0f961928fe6e1fbd65a583100ef8264b2bf5f3dd843afba7",
+  "csharp/EnvelopeTest/MessageDefinitions.cs": "0a8d63ec253c629629fb55f61c7113ae203eb6b88c7a98bf010b51b003ed12ac",
+  "csharp/EnvelopeTest/Messages/ADCCommand.cs": "6b2b3b327acca8767bb8b59103a6e69bee971bfbbc487394501947bc7765f562",
+  "csharp/EnvelopeTest/Messages/ADCResponse.cs": "e1bc9c444c8e58d1f06d12eb47fbb2a83da9f898a6bf1040f4cf99769353b02d",
+  "csharp/EnvelopeTest/Messages/CommandEnvelope.cs": "1460351b14d377bb7ac742799c0b31a9c30d2341cdddbf5bc7c9cf44e336beeb",
+  "csharp/EnvelopeTest/Messages/DACCommand.cs": "107705862f45d191f4665b1bb1a52e1da188725827372b97f73c86b86f0efa3a",
+  "csharp/EnvelopeTest/Messages/DACResponse.cs": "719b609dd2e75adba533a61273696b01a03c85033ef8eda53fa329182aad2f2b",
+  "csharp/EnvelopeTest/Messages/MotorCommand.cs": "26e98a8c31b0622c69ce0603be7c5760762078351100ff160811502010d1313a",
+  "csharp/EnvelopeTest/Messages/MotorResponse.cs": "62e2dc2c0353d9f77d74341cbb08aa2a085a0d51106e1847d7bf2138502e37ee",
+  "csharp/EnvelopeTest/Messages/RawConfigPayload.cs": "145fb94959ab88ce8dd0fc99f77b92351c9d3587947a187a0e68f1eb118eeebe",
+  "csharp/EnvelopeTest/Messages/RawDataEnvelope.cs": "6a8a817c228042327473bf5df5b93b988470105c6e531141f1820fc6deac9b02",
+  "csharp/EnvelopeTest/Messages/RawSamplePayload.cs": "eb707786f444b4888b4d07ffb4cade0e556e62fe5f7dd26caf524018a03fecd0",
+  "csharp/EnvelopeTest/Messages/ResponseEnvelope.cs": "c82d892483688b42b4696f2a9d4346c85d28c6b5e2fd5a3abf65995ed825cf2f",
+  "csharp/EnvelopeTest/Messages/SensorReadCommand.cs": "a49fa5d167f15a02b78be827d267493fae67f872b42281ac8f4b982d2e0d7aa4",
+  "csharp/EnvelopeTest/Messages/SensorResponse.cs": "f3524c7a177e9f18f80f78c6ae887d96146d29ef40ca635fe81a252b3a467104",
+  "csharp/EnvelopeTest/SdkInterface.cs": "5d2e5f170817015ac3ac1ea8d026d4e03869b49ec26151b2843dbb5af2e0179c",
+  "csharp/EnvelopeTest/test_roundtrip_envelope_test.cs": "f3c9baf7bf4bb7798c849c5e2e34d8025f8ed4046d82362854c1c7de8e7ff5bc",
+  "csharp/StructFrame.csproj": "7646a3da8bdc7856676b597e92f8430b6594b2a78b9ecf4963d52e5d2820cdfe",
+  "gql/envelope_test.graphql": "eba55d936250be9fed70c886f23cb1fbc4525cdea3da35f20b3f57fa9b151bce",
+  "gql/schema.graphql": "0f6c7c410b2eac3e050a15c59b80e84cf5a9ac119a2ba13770705687e3723432",
+  "js/envelope-test.structframe.js": "aac900a6b00eff07c55459c4083980148472ed06e6f1d19f5689ac2744251262",
+  "js/test_roundtrip_envelope_test.js": "eadc177d1954be12fce521365874bdd4cb76df5d9ed60e8039e59bbf5aab9147",
+  "py/structframe/envelope_test.py": "fe55c05bed49d7432385680fc3625c72340e10a3633892c7184ebaae44f523ef",
+  "py/structframe/envelope_test_tests.py": "6d4ba4527ffc384111c3912a8302c2368d58cf525b2ef8cbf9f193dc3badfe4b",
+  "py/test_roundtrip_envelope_test.py": "532e5dc0d66f47f3d2ebe017281538ef37d11cdcb47ddc77474946ba3d2a67f3",
+  "rust/Cargo.toml": "d07f7e31a0c7862c1abe672d8e41da7a8e70e389c1c9ab91549808139fa0d63e",
+  "rust/envelope_test.structframe.rs": "e769db45f96d4b57d6f7a9895b17a82ab0a212cfe0060ec9e3d74853328b7454",
+  "rust/test_roundtrip_envelope_test.rs": "107a059b4c4570f9a00efd5eae0fb2e8e26bf3f51d8c06d1cbbdf6fcbfaccfab",
+  "sf_compile.json": "6c87c18b9aa350d70fa16ee108087a670b6a70d9b0e15403e89c0bc0acfee440",
+  "ts/envelope-test.structframe.ts": "87ca010ba6ce5e49e16020427a6ffe42907322165a6afe18abfbaaad354d9c48",
+  "ts/package.json": "5c4ca650e20687d7325fadb9b345cd5fed784b7d195d60ef218005415ea16967",
+  "ts/test_roundtrip_envelope_test.ts": "256c98b4c1cd4ee1f6f9314ed93b77330c01542de43b401c28c76ef0081da095"
+ },
+ "schema": "tests/proto/envelope_messages.sf"
+}

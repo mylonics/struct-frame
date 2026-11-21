@@ -32,7 +32,7 @@ import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/comp
     Unlike Mavlink, supports complex message structures with nested messages and variable-length packing for arrays.
   </Card>
   <Card title="Cross-platform" icon="puzzle">
-    Generate code for embedded C, server Python, and frontend TypeScript from a single proto definition.
+    Generate code for embedded C, server Python, and frontend TypeScript from a single schema.
   </Card>
 </CardGrid>
 
@@ -46,13 +46,12 @@ pip install struct-frame
 
 Create a schema, `status.sf`:
 
-```proto
+```sf
 package example;
 
-message Status {
-  option msgid = 1;
-  uint32 id = 1;
-  float value = 2;
+message Status @1 {
+  uint32 id;
+  float value;
 }
 ```
 
@@ -118,7 +117,7 @@ struct-frame status.sf --lang all --out build/gen
 
 <CardGrid>
   <LinkCard title="Quick Start" href="/getting-started/quick-start/" description="Complete walkthrough with C++ example" />
-  <LinkCard title="Message Definitions" href="/basic-usage/message-definitions/" description="Learn proto file syntax" />
+  <LinkCard title="Message Definitions" href="/basic-usage/message-definitions/" description="Learn the schema language" />
   <LinkCard title="Language Examples" href="/basic-usage/language-examples/" description="See detailed examples for each language" />
   <LinkCard title="CLI Reference" href="/reference/cli-reference/" description="All command-line options" />
 </CardGrid>

@@ -40,6 +40,12 @@ fn drive(cfg: ProfileConfig, data: &[u8]) {
     for _ in 0..256 {
         if reader.try_next(&stub_info).is_none() { break; }
     }
+    // Byte-at-a-time feed with system frames delivered.
+    let mut stream = AccumulatingReader::new(cfg, 1024);
+    stream.set_deliver_system_frames(true);
+    for &b in data {
+        let _ = stream.push_byte(b, &stub_info);
+    }
 }
 
 fuzz_target!(|data: &[u8]| {
