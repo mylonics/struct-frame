@@ -1,0 +1,36 @@
+# PRs are squash-merged, so the PR title becomes the commit subject that
+# release.yml's git-changelog reads when it writes CHANGELOG.md. Titles without a
+# conventional-commit type ("Updated csproj") are dropped by git-changelog; this
+# check catches them before merge. Make it a required status check on develop to
+# block such merges outright.
+
+name: PR Title
+
+on:
+  pull_request:
+    # synchronize keeps the check attached to the latest commit, which a required
+    # status check needs.
+    types: [opened, edited, reopened, synchronize]
+    branches: [develop, main]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title has a conventional-commit type
+        # Passed through the environment so the title is never parsed as shell code.
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Listed in the changelog: feat, fix, perf, refactor, revert.
+          # Accepted but not listed: build, chore, ci, deps, docs, style, test.
+          types='build|chore|ci|deps|docs?|feat|fix|perf|ref|refactor|revert|style|tests?'
+          if printf '%s' "$TITLE" | grep -Eq "^(($types)(\([^)]*\))?!?: [^ ]|Revert \")"; then
+            echo "OK: $TITLE"
+          else
+            echo "::error::PR title needs a conventional-commit type, for example 'feat: ...', 'fix(csharp): ...', or 'feat!: ...' for a breaking change. Got: $TITLE"
+            exit 1
+          fi

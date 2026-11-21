@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 <small>[Compare with v0.11.0](https://github.com/mylonics/struct-frame/compare/v0.11.0...v0.11.1)</small>
 
+### Features
+
+- **Breaking:** the generated C# project targets `net10.0` only; .NET 8 and 9 are no longer built or tested. .NET 11 apps consume the net10.0 build, and `-p:TargetFrameworks=...` or a `Directory.Build.props` builds other frameworks (#384) ([dc6f639](https://github.com/mylonics/struct-frame/commit/dc6f63931dcde4ecea82708c367b9d7be658f997) by Rijesh Augustine).
+- generated C# project writes `StructFrame.xml` for IntelliSense, pins `System.IO.Ports` 10.0.0 and `NetCoreServer` 8.0.7, and sets `ContinuousIntegrationBuild` on Azure Pipelines (#384) ([dc6f639](https://github.com/mylonics/struct-frame/commit/dc6f63931dcde4ecea82708c367b9d7be658f997) by Rijesh Augustine).
+
+### Bug Fixes
+
+- generated C# project no longer references `Microsoft.SourceLink.GitHub` 8.x, which pulled in `Microsoft.Build.Tasks.Git` 8.0.0 (NU1902, GHSA-23fw-v26w-5fgq); the .NET SDK's built-in Source Link is used instead (#384) ([dc6f639](https://github.com/mylonics/struct-frame/commit/dc6f63931dcde4ecea82708c367b9d7be658f997) by Rijesh Augustine).
+- release workflow lists conventional-commit PRs in the changelog and links the `v`-prefixed release tag (#384) ([dc6f639](https://github.com/mylonics/struct-frame/commit/dc6f63931dcde4ecea82708c367b9d7be658f997) by Rijesh Augustine).
+
 ## [v0.11.0](https://github.com/mylonics/struct-frame/releases/tag/v0.11.0) - 2026-11-12
 
 <small>[Compare with v0.10.10](https://github.com/mylonics/struct-frame/compare/v0.10.10...v0.11.0)</small>
